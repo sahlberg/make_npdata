@@ -59,7 +59,7 @@ void get_rif_key(unsigned char* rap, unsigned char* rif)
 
 void generate_key(int crypto_mode, int version, unsigned char *key_final, unsigned char *iv_final, unsigned char *key, unsigned char *iv)
 {
-	int mode = (int) (crypto_mode & 0xF0000000);
+	int mode = (int)(crypto_mode & 0xF0000000);
 	switch (mode) {
 	case 0x10000000:
 		// Encrypted ERK.
@@ -84,7 +84,7 @@ void generate_key(int crypto_mode, int version, unsigned char *key_final, unsign
 
 void generate_hash(int hash_mode, int version, unsigned char *hash_final, unsigned char *hash)
 {
-	int mode = (int) (hash_mode & 0xF0000000);
+	int mode = (int)(hash_mode & 0xF0000000);
 	switch (mode) {
 	case 0x10000000:
 		// Encrypted HASH.
@@ -104,7 +104,7 @@ void generate_hash(int hash_mode, int version, unsigned char *hash_final, unsign
 	};
 }
 
-bool decrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, unsigned char *out, int length, unsigned char *key, unsigned char *iv, unsigned char *hash, unsigned char *test_hash) 
+bool decrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, unsigned char *out, int length, unsigned char *key, unsigned char *iv, unsigned char *hash, unsigned char *test_hash)
 {
 	// Setup buffers for key, iv and hash.
 	unsigned char key_final[0x10] = {};
@@ -152,7 +152,7 @@ bool decrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, uns
 	}
 }
 
-bool encrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, unsigned char *out, int length, unsigned char *key, unsigned char *iv, unsigned char *hash, unsigned char *test_hash) 
+bool encrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, unsigned char *out, int length, unsigned char *key, unsigned char *iv, unsigned char *hash, unsigned char *test_hash)
 {
 	// Setup buffers for key, iv and hash.
 	unsigned char key_final[0x10] = {};
@@ -243,7 +243,7 @@ unsigned char* get_block_key(int block, NPD_HEADER *npd)
 int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsigned char* crypt_key, bool verbose)
 {
 	// Get metadata info and setup buffers.
-	int block_num = (int) ((edat->file_size + edat->block_size - 1) / edat->block_size);
+	int block_num = (int)((edat->file_size + edat->block_size - 1) / edat->block_size);
 	int metadata_section_size = ((edat->flags & EDAT_COMPRESSED_FLAG) != 0 || (edat->flags & EDAT_FLAG_0x20) != 0) ? 0x20 : 0x10;
 	int metadata_offset = 0x100;
 
@@ -255,7 +255,12 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 	unsigned char hash[0x10];
 	unsigned char key_result[0x10];
 	unsigned char hash_result[0x14];
-	long offset = 0;
+	memset(hash, 0, 0x10);
+	memset(key_result, 0, 0x10);
+	memset(hash_result, 0, 0x14);
+
+	unsigned long long offset = 0;
+	unsigned long long metadata_sec_offset = 0;
 	int length = 0;
 	int compression_end = 0;
 	unsigned char empty_iv[0x10] = {};
@@ -264,18 +269,20 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 	int i;
 	for (i = 0; i < block_num; i++)
 	{
-		fseek(in, metadata_offset + i * metadata_section_size, SEEK_SET);	
 		memset(hash_result, 0, 0x14);
 
 		if ((edat->flags & EDAT_COMPRESSED_FLAG) != 0)
 		{
+			metadata_sec_offset = (metadata_offset + i * metadata_section_size);
+			fseeko64(in, metadata_sec_offset, SEEK_SET);
+
 			unsigned char metadata[0x20];
 			memset(metadata, 0, 0x20);
 			fread(metadata, 0x20, 1, in);
 
 			// If the data is compressed, decrypt the metadata.
 			unsigned char *result = dec_section(metadata);
-			offset = ((se32(*(int*)&result[0]) << 4) | (se32(*(int*)&result[4])));
+			offset = (unsigned long long) ((se32(*(int*)&result[0]) << 4) | (se32(*(int*)&result[4])));
 			length = se32(*(int*)&result[8]);
 			compression_end = se32(*(int*)&result[12]);
 			free(result);
@@ -285,43 +292,51 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		else if ((edat->flags & EDAT_FLAG_0x20) != 0)
 		{
 			// If FLAG 0x20, the metadata precedes each data block.
-			fseek(in, metadata_offset + i * metadata_section_size + length, SEEK_SET);
+			metadata_sec_offset = (metadata_offset + (unsigned long long) i * (metadata_section_size + length));
+			fseeko64(in, metadata_sec_offset, SEEK_SET);
 
 			unsigned char metadata[0x20];
 			memset(metadata, 0, 0x20);
 			fread(metadata, 0x20, 1, in);
+			memcpy(hash_result, metadata, 0x14);
 
 			// If FLAG 0x20 is set, apply custom xor.
 			int j;
 			for (j = 0; j < 0x10; j++)
-				hash_result[j] = (unsigned char) (metadata[j] ^ metadata[j + 0x10]);
+				hash_result[j] = (unsigned char)(metadata[j] ^ metadata[j + 0x10]);
 
-			offset = metadata_offset + i * edat->block_size + (i + 1) * metadata_section_size;
+			offset = metadata_sec_offset + 0x20;
 			length = edat->block_size;
 
 			if ((i == (block_num - 1)) && (edat->file_size % edat->block_size))
-				length = (int) (edat->file_size % edat->block_size);
+				length = (int)(edat->file_size % edat->block_size);
 		}
 		else
 		{
+			metadata_sec_offset = (metadata_offset + (unsigned long long) i * metadata_section_size);
+			fseeko64(in, metadata_sec_offset, SEEK_SET);
+
 			fread(hash_result, 0x10, 1, in);
-			offset = metadata_offset + i * edat->block_size + block_num * metadata_section_size;
+			offset = (unsigned long long)(metadata_offset + (unsigned long long)i * edat->block_size + (unsigned long long) block_num * metadata_section_size);
 			length = edat->block_size;
 
 			if ((i == (block_num - 1)) && (edat->file_size % edat->block_size))
-				length = (int) (edat->file_size % edat->block_size);
+				length = (int)(edat->file_size % edat->block_size);
 		}
 
 		// Locate the real data.
 		int pad_length = length;
-		length = (int) ((pad_length + 0xF) & 0xFFFFFFF0);
-		fseek(in, offset, SEEK_SET);
+		length = (int)((pad_length + 0xF) & 0xFFFFFFF0);
 
 		// Setup buffers for decryption and read the data.
 		enc_data = (unsigned char *) malloc (length);
 		dec_data = (unsigned char *) malloc (length);
+		memset(enc_data, 0, length);
+		memset(dec_data, 0, length);
 		memset(hash, 0, 0x10);
 		memset(key_result, 0, 0x10);
+
+		fseeko64(in, offset, SEEK_SET);
 		fread(enc_data, length, 1, in);
 
 		// Generate a key for the current block.
@@ -351,7 +366,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			hash_mode |= 0x10000000;
 		}
 
-		if ((edat->flags  & EDAT_DEBUG_DATA_FLAG) != 0) 
+		if ((edat->flags  & EDAT_DEBUG_DATA_FLAG) != 0)
 		{
 			// Reset the flags.
 			crypto_mode |= 0x01000000;
@@ -367,7 +382,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			if (!decrypt(hash_mode, crypto_mode, (npd->version == 4), enc_data, dec_data, length, key_result, iv, hash, hash_result))
 			{
 				if (verbose)
-					printf("WARNING: Block at offset 0x%08x has invalid hash!\n", offset);
+					printf("WARNING: Block at offset 0x%llx has invalid hash!\n", offset);
 			}
 		}
 
@@ -392,7 +407,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 
 			edat->file_size -= res;
 
-			if (edat->file_size == 0) 
+			if (edat->file_size == 0)
 			{
 				if (res < 0)
 				{
@@ -400,7 +415,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 					return 1;
 				}
 				else
-					printf("EDAT/SDAT successfully decompressed!\n");	
+					printf("EDAT/SDAT successfully decompressed!\n");
 			}
 
 			free(decomp_data);
@@ -419,7 +434,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 
 int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, bool verbose)
 {
-	fseek(f, 0, SEEK_SET);
+	fseeko64(f, 0, SEEK_SET);
 	unsigned char header[0xA0];
 	unsigned char empty_header[0xA0];
 	unsigned char header_hash[0x10];
@@ -432,15 +447,15 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	// Check NPD version and flags.
 	if ((npd->version == 0) || (npd->version == 1))
 	{
-		if (edat->flags & 0x7EFFFFFE) 
+		if (edat->flags & 0x7EFFFFFE)
 		{
 			printf("ERROR: Bad header flags!\n");
 			return 1;
 		}
 	}
-	else if (npd->version == 2) 
+	else if (npd->version == 2)
 	{
-		if (edat->flags & 0x7EFFFFE0) 
+		if (edat->flags & 0x7EFFFFE0)
 		{
 			printf("ERROR: Bad header flags!\n");
 			return 1;
@@ -464,7 +479,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	fread(header, 0xA0, 1, f);
 
 	// Read in the header and metadata section hashes.
-	fseek(f, 0x90, SEEK_SET);
+	fseeko64(f, 0x90, SEEK_SET);
 	fread(metadata_hash, 0x10, 1, f);
 	fread(header_hash, 0x10, 1, f);
 
@@ -473,8 +488,10 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	int hash_mode = ((edat->flags & EDAT_ENCRYPTED_KEY_FLAG) == 0) ? 0x00000002 : 0x10000002;
 	if ((edat->flags & EDAT_DEBUG_DATA_FLAG) != 0)
 	{
-		printf("DEBUG data detected!\n");
 		hash_mode |= 0x01000000;
+
+		if (verbose)
+			printf("DEBUG data detected!\n");
 	}
 
 	// Setup header key and iv buffers.
@@ -488,18 +505,26 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	{
 		if (verbose)
 			printf("WARNING: Header hash is invalid!\n");
+
+		// If the header hash test fails, then RAP/RIF/KLIC key is invalid.
+		printf("ERROR: RAP/RIF/KLIC key is invalid!\n");
+		return 1;
 	}
 
 	// Parse the metadata info.
 	int metadata_section_size = ((edat->flags & EDAT_COMPRESSED_FLAG) != 0 || (edat->flags & EDAT_FLAG_0x20) != 0) ? 0x20 : 0x10;
 	if (((edat->flags & EDAT_COMPRESSED_FLAG) != 0))
-		printf("COMPRESSED data detected!\n");
+	{
+		if (verbose)
+			printf("COMPRESSED data detected!\n");
+	}
 
-	int block_num = (int) ((edat->file_size + edat->block_size - 1) / edat->block_size);
+	int block_num = (int)((edat->file_size + edat->block_size - 1) / edat->block_size);
 	int metadata_offset = 0x100;
-	int metadata_size =  metadata_section_size * block_num;
+	int metadata_size = metadata_section_size * block_num;
+	long long metadata_section_offset = metadata_offset;
 
-	int bytes_read = 0;
+	long bytes_read = 0;
 	long bytes_to_read = metadata_size;
 	unsigned char *metadata = (unsigned char *) malloc (metadata_size);
 	unsigned char *empty_metadata = (unsigned char *) malloc (metadata_size);
@@ -507,15 +532,19 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	while (bytes_to_read > 0)
 	{
 		// Locate the metadata blocks.
-		int block_size = (0x3C00 > bytes_to_read) ? (int) bytes_to_read : 0x3C00;  // 0x3C00 is the maximum block size.
-		fseek(f, metadata_offset + bytes_read, SEEK_SET);
+		fseeko64(f, metadata_section_offset, SEEK_SET);
 
 		// Read in the metadata.
-		fread(metadata + bytes_read, block_size, 1, f);
+		fread(metadata + bytes_read, metadata_section_size, 1, f);
 
 		// Adjust sizes.
-		bytes_read += block_size;
-		bytes_to_read -= block_size;
+		bytes_read += metadata_section_size;
+		bytes_to_read -= metadata_section_size;
+
+		if (((edat->flags & EDAT_FLAG_0x20) != 0)) // Metadata block before each data block.
+			metadata_section_offset += (metadata_section_size + edat->block_size);
+		else
+			metadata_section_offset += metadata_section_size;
 	}
 
 	// Test the metadata section hash (located at offset 0x90).
@@ -566,7 +595,7 @@ void validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HE
 	{
 		if (title_hash_result)
 			printf("NPD title hash is valid!\n");
-		else 
+		else
 			printf("WARNING: NPD title hash is invalid!\n");
 	}
 
@@ -599,7 +628,7 @@ void validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HE
 		{
 			if (dev_hash_result)
 				printf("NPD dev hash is valid!\n");
-			else 
+			else
 				printf("WARNING: NPD dev hash is invalid!\n");
 		}
 	}
@@ -630,8 +659,8 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 	NPD->unk1 = se64(*(u64*)&npd_header[112]);
 	NPD->unk2 = se64(*(u64*)&npd_header[120]);
 
-	unsigned char npd_magic[4] = {0x4E, 0x50, 0x44, 0x00};  //NPD0
-	if(memcmp(NPD->magic, npd_magic, 4))
+	unsigned char npd_magic[4] = { 0x4E, 0x50, 0x44, 0x00 };  //NPD0
+	if (memcmp(NPD->magic, npd_magic, 4))
 	{
 		printf("ERROR: File has invalid NPD header.");
 		return 1;
@@ -657,7 +686,7 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 		printf("SDAT HEADER\n");
 		printf("SDAT flags: 0x%08X\n", EDAT->flags);
 		printf("SDAT block size: 0x%08X\n", EDAT->block_size);
-		printf("SDAT file size: 0x%08X\n", EDAT->file_size);
+		printf("SDAT file size: 0x%llX\n", EDAT->file_size);
 		printf("\n");
 
 		// Generate SDAT key.
@@ -668,7 +697,7 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 		printf("EDAT HEADER\n");
 		printf("EDAT flags: 0x%08X\n", EDAT->flags);
 		printf("EDAT block size: 0x%08X\n", EDAT->block_size);
-		printf("EDAT file size: 0x%08X\n", EDAT->file_size);
+		printf("EDAT file size: 0x%llX\n", EDAT->file_size);
 		printf("\n");
 
 		// Perform header validation (optional step for EDAT only).
@@ -718,14 +747,17 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 	{
 		int i;
 		printf("DECRYPTION KEY: ");
-		for(i = 0; i < 0x10; i++)
+		for (i = 0; i < 0x10; i++)
 			printf("%02X", key[i]);
 		printf("\n\n");
 	}
 
 	printf("Parsing data...\n");
 	if (check_data(key, EDAT, NPD, input, verbose))
+	{
 		printf("Parsing failed!\n");
+		return 1;
+	}
 	else
 		printf("File successfully parsed!\n");
 
@@ -733,7 +765,10 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 
 	printf("Decrypting data...\n");
 	if (decrypt_data(input, output, EDAT, NPD, key, verbose))
+	{
 		printf("Decryption failed!");
+		return 1;
+	}
 	else
 		printf("File successfully decrypted!\n");
 
@@ -747,7 +782,7 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsigned char* crypt_key, bool verbose)
 {
 	// Set metadata info and setup buffers.
-	int block_num = (int) ((edat->file_size + edat->block_size - 1) / edat->block_size);
+	int block_num = (int)((edat->file_size + edat->block_size - 1) / edat->block_size);
 	int metadata_offset = 0x100;
 
 	unsigned char *enc_data;
@@ -758,20 +793,20 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 	unsigned char hash[0x10];
 	unsigned char key_result[0x10];
 	unsigned char hash_result[0x14];
-	long offset = 0;
+	long long offset = 0;
 	int length = 0;
 	int compression_end = 0;
 	unsigned char empty_iv[0x10] = {};
 
 	// Build special data footers for each version.
-	unsigned char edat_footer_v1[0x10] = {0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x70, 0x61, 0x63, 0x6B, 0x61, 0x67, 0x65, 0x72, 0x00, 0x00};
-	unsigned char edat_footer_v2[0x10] = {0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x32, 0x2E, 0x34, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00};
-	unsigned char edat_footer_v3[0x10] = {0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x33, 0x2E, 0x33, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00};
-	unsigned char edat_footer_v4[0x10] = {0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x34, 0x2E, 0x30, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00};
-	unsigned char sdat_footer_v1[0x10] = {0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x70, 0x61, 0x63, 0x6B, 0x61, 0x67, 0x65, 0x72, 0x00, 0x00};
-	unsigned char sdat_footer_v2[0x10] = {0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x32, 0x2E, 0x34, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00};
-	unsigned char sdat_footer_v3[0x10] = {0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x33, 0x2E, 0x33, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00};
-	unsigned char sdat_footer_v4[0x10] = {0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x34, 0x2E, 0x30, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00};
+	unsigned char edat_footer_v1[0x10] = { 0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x70, 0x61, 0x63, 0x6B, 0x61, 0x67, 0x65, 0x72, 0x00, 0x00 };
+	unsigned char edat_footer_v2[0x10] = { 0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x32, 0x2E, 0x34, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00 };
+	unsigned char edat_footer_v3[0x10] = { 0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x33, 0x2E, 0x33, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00 };
+	unsigned char edat_footer_v4[0x10] = { 0x45, 0x44, 0x41, 0x54, 0x41, 0x20, 0x34, 0x2E, 0x30, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00 };
+	unsigned char sdat_footer_v1[0x10] = { 0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x70, 0x61, 0x63, 0x6B, 0x61, 0x67, 0x65, 0x72, 0x00, 0x00 };
+	unsigned char sdat_footer_v2[0x10] = { 0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x32, 0x2E, 0x34, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00 };
+	unsigned char sdat_footer_v3[0x10] = { 0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x33, 0x2E, 0x33, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00 };
+	unsigned char sdat_footer_v4[0x10] = { 0x53, 0x44, 0x41, 0x54, 0x41, 0x20, 0x34, 0x2E, 0x30, 0x2E, 0x30, 0x2E, 0x57, 0x00, 0x00, 0x00 };
 
 	// Encrypt the data and generate the metadata.
 	int i;
@@ -783,12 +818,12 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		length = edat->block_size;
 
 		if ((i == (block_num - 1)) && (edat->file_size % edat->block_size))
-			length = (int) (edat->file_size % edat->block_size);
+			length = (int)(edat->file_size % edat->block_size);
 
 		// Locate the real data.
 		int pad_length = length;
-		length = (int) ((pad_length + 0xF) & 0xFFFFFFF0);
-		fseek(in, offset, SEEK_SET);
+		length = (int)((pad_length + 0xF) & 0xFFFFFFF0);
+		fseeko64(in, offset, SEEK_SET);
 
 		// Setup buffers for encryption and read the data.
 		enc_data = (unsigned char *) malloc (length);
@@ -826,7 +861,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			hash_mode |= 0x10000000;
 		}
 
-		if ((edat->flags  & EDAT_DEBUG_DATA_FLAG) != 0) 
+		if ((edat->flags  & EDAT_DEBUG_DATA_FLAG) != 0)
 		{
 			// Reset the flags.
 			crypto_mode |= 0x01000000;
@@ -839,7 +874,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			// IV is null if NPD version is 1 or 0.
 			iv = (npd->version <= 1) ? empty_iv : npd->digest;
 			// Call main crypto routine on this data block.
-			if(!encrypt(hash_mode, crypto_mode, (npd->version == 4), dec_data, enc_data, length, key_result, iv, hash, hash_result))
+			if (!encrypt(hash_mode, crypto_mode, (npd->version == 4), dec_data, enc_data, length, key_result, iv, hash, hash_result))
 			{
 				if (verbose)
 					printf("WARNING: Block at offset 0x%08x got invalid forged hash!\n", offset);
@@ -849,8 +884,8 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		// Write the metadata and the encrypted data.
 		if ((edat->flags & EDAT_COMPRESSED_FLAG) != 0)
 		{
-			long data_offset = metadata_offset + i * edat->block_size + block_num * 0x20;
-			
+			long long data_offset = metadata_offset + i * edat->block_size + block_num * 0x20;
+
 			// If the data is compressed, encrypt the metadata.
 			unsigned char dec_metadata[0x20];
 			unsigned char enc_metadata[0x20];
@@ -869,23 +904,23 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			// Encrypt the metadata section.
 			memcpy(enc_metadata, dec_metadata, 0x10);
 			memcpy(enc_metadata + 0x10, dec_section(dec_metadata), 0x10);
-			
+
 			// Write the encrypted metadata.
-			fseek(out, metadata_offset + i * 0x20, SEEK_SET);
+			fseeko64(out, metadata_offset + i * 0x20, SEEK_SET);
 			fwrite(enc_metadata, 0x20, 1, out);
 
 			// Write the encrypted data.
-			fseek(out, data_offset, SEEK_SET);
+			fseeko64(out, data_offset, SEEK_SET);
 			fwrite(enc_data, length, 1, out);
 		}
 		else if ((edat->flags & EDAT_FLAG_0x20) != 0)
 		{
-			int data_offset = metadata_offset + i * edat->block_size + (i + 1) * 0x20;
+			long long data_offset = metadata_offset + i * edat->block_size + (i + 1) * 0x20;
 
 			// If FLAG 0x20 is set, apply custom xor.
 			unsigned char metadata[0x20];
 			memset(metadata, 0, 0x20);
-			
+
 			// Use a fake XOR value and build the metadata.
 			unsigned char hash_result_1[0x10];
 			memset(hash_result_1, 0, 0x10);
@@ -896,35 +931,39 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			int j;
 			for (j = 0; j < 0x10; j++)
 				hash_result_1[j] = (unsigned char) (hash_result[j] ^ hash_result_2[j]);
-			
+
 			// Set the metadata.
 			memcpy(metadata, hash_result_1, 0x10);
 			memcpy(metadata + 0x10, hash_result_2, 0x10);
 
 			// Write the encrypted metadata.
-			fseek(out, metadata_offset + i * 0x20 + offset, SEEK_SET);
+			fseeko64(out, metadata_offset + i * 0x20 + offset, SEEK_SET);
 			fwrite(metadata, 0x20, 1, out);
 
 			// Write the encrypted data.
-			fseek(out, data_offset, SEEK_SET);
+			fseeko64(out, data_offset, SEEK_SET);
 			fwrite(enc_data, length, 1, out);
 		}
 		else
 		{
-			int data_offset = metadata_offset + i * edat->block_size + block_num * 0x10;
-			
+			long long data_offset = metadata_offset + i * edat->block_size + block_num * 0x10;
+
 			// Write the encrypted metadata.
-			fseek(out, metadata_offset + i * 0x10, SEEK_SET);
+			fseeko64(out, metadata_offset + i * 0x10, SEEK_SET);
 			fwrite(hash_result, 0x10, 1, out);
 
 			// Write the encrypted data.
-			fseek(out, data_offset, SEEK_SET);
+			fseeko64(out, data_offset, SEEK_SET);
 			fwrite(enc_data, length, 1, out);
 		}
 
 		free(enc_data);
 		free(dec_data);
 	}
+
+	// Before appending the footer, if the file is empty, seek to the metadata offset.
+	if (edat->file_size == 0)
+		fseeko64(out, metadata_offset, SEEK_SET);
 
 	// Append the special version footer.
 	if ((npd->version == 0) || (npd->version == 1))
@@ -934,7 +973,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		else
 			fwrite(edat_footer_v1, 0x10, 1, out);
 	}
-	else if (npd->version == 2) 
+	else if (npd->version == 2)
 	{
 		if ((edat->flags & SDAT_FLAG) == SDAT_FLAG)
 			fwrite(sdat_footer_v2, 0x10, 1, out);
@@ -986,11 +1025,12 @@ int forge_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f)
 
 	// Parse the metadata info.
 	int metadata_section_size = ((edat->flags & EDAT_COMPRESSED_FLAG) != 0 || (edat->flags & EDAT_FLAG_0x20) != 0) ? 0x20 : 0x10;
-	int block_num = (int) ((edat->file_size + edat->block_size - 1) / edat->block_size);
+	int block_num = (int)((edat->file_size + edat->block_size - 1) / edat->block_size);
 	int metadata_offset = 0x100;
-	int metadata_size =  metadata_section_size * block_num;
+	int metadata_size = metadata_section_size * block_num;
+	long long metadata_section_offset = metadata_offset;
 
-	int bytes_read = 0;
+	long bytes_read = 0;
 	long bytes_to_read = metadata_size;
 	unsigned char *metadata = (unsigned char *) malloc (metadata_size);
 	unsigned char *empty_metadata = (unsigned char *) malloc (metadata_size);
@@ -998,38 +1038,42 @@ int forge_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f)
 	while (bytes_to_read > 0)
 	{
 		// Locate the metadata blocks.
-		int block_size = (0x3C00 > bytes_to_read) ? (int) bytes_to_read : 0x3C00;  // 0x3C00 is the maximum block size.
-		fseek(f, metadata_offset + bytes_read, SEEK_SET);
+		fseeko64(f, metadata_section_offset, SEEK_SET);
 
 		// Read in the metadata.
-		fread(metadata + bytes_read, block_size, 1, f);
+		fread(metadata + bytes_read, metadata_section_size, 1, f);
 
 		// Adjust sizes.
-		bytes_read += block_size;
-		bytes_to_read -= block_size;
+		bytes_read += metadata_section_size;
+		bytes_to_read -= metadata_section_size;
+
+		if (((edat->flags & EDAT_FLAG_0x20) != 0)) // Metadata block before each data block.
+			metadata_section_offset += (metadata_section_size + edat->block_size);
+		else
+			metadata_section_offset += metadata_section_size;
 	}
 
 	// Generate the metadata section hash (located at offset 0x90).
 	encrypt(hash_mode, crypto_mode, (npd->version == 4), metadata, empty_metadata, metadata_size, header_key, header_iv, key, metadata_hash);
 
 	// Write back the forged metadata section hash.
-	fseek(f, 0x90, SEEK_SET);
+	fseeko64(f, 0x90, SEEK_SET);
 	fwrite(metadata_hash, 0x10, 1, f);
 
 	// Read in the file header.
-	fseek(f, 0, SEEK_SET);
+	fseeko64(f, 0, SEEK_SET);
 	fread(header, 0xA0, 1, f);
 
 	// Generate the header hash (located at offset 0xA0).
 	encrypt(hash_mode, crypto_mode, (npd->version == 4), header, empty_header, 0xA0, header_key, header_iv, key, header_hash);
 
 	// Write back the forged header section hash.
-	fseek(f, 0xA0, SEEK_SET);
+	fseeko64(f, 0xA0, SEEK_SET);
 	fwrite(header_hash, 0x10, 1, f);
 
 	// The ECDSA signature field is not verified (except for PS2 Classics).
 	// Fill with random data for now.
-	fseek(f, 0xB0, SEEK_SET);
+	fseeko64(f, 0xB0, SEEK_SET);
 	prng(signature, 0x50);
 	fwrite(signature, 0x50, 1, f);
 
@@ -1093,16 +1137,16 @@ void forge_npd_dev_hash(unsigned char *klicensee, NPD_HEADER *npd)
 bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned char* content_id, unsigned char* devklic, unsigned char* rifkey, int version, int license, int type, int block, bool useCompression, bool isSDAT, bool verbose)
 {
 	// Get file size.
-	fseek(input, 0, SEEK_END);
-	int input_file_size = ftell(input);
-	fseek(input, 0, SEEK_SET);
+	fseeko64(input, 0, SEEK_END);
+	long long input_file_size = ftello64(input);
+	fseeko64(input, 0, SEEK_SET);
 
 	// Setup NPD and EDAT/SDAT structs.
 	NPD_HEADER *NPD = (NPD_HEADER *) malloc (sizeof(NPD_HEADER));
 	EDAT_HEADER *EDAT = (EDAT_HEADER *) malloc (sizeof(EDAT_HEADER));
 
 	// Forge NPD header.
-	unsigned char npd_magic[4] = {0x4E, 0x50, 0x44, 0x00};  //NPD0
+	unsigned char npd_magic[4] = { 0x4E, 0x50, 0x44, 0x00 };  //NPD0
 	unsigned char fake_digest[0x10];
 	memset(fake_digest, 0, 0x10);
 	prng(fake_digest, 0x10);
@@ -1120,28 +1164,37 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 	// Forge EDAT/SDAT header with fixed values for flags and block size.
 	if (version == 1)
 	{
-		EDAT->flags = 0x00;
-		if (isSDAT) EDAT->flags |= SDAT_FLAG;
-		if (useCompression) EDAT->flags |= EDAT_COMPRESSED_FLAG;
+		// Version 1 is only valid for EDAT files.
+		if (!isSDAT)
+		{
+			EDAT->flags = 0x00;
+			if (useCompression) EDAT->flags |= EDAT_COMPRESSED_FLAG;
+		}
+		else
+		{
+			printf("ERROR: Invalid version for SDAT!");
+			return 1;
+		}
 	}
 	else if (version == 2)
 	{
 		EDAT->flags = 0x0C;
-		if (isSDAT) EDAT->flags |= SDAT_FLAG;
 		if (useCompression) EDAT->flags |= EDAT_COMPRESSED_FLAG;
+		if (isSDAT) EDAT->flags |= SDAT_FLAG;
 	}
 	else
 	{
+		// Version 3 and 4 use 0x3C and 0x0D flags (there is no 0x3D flag).
 		EDAT->flags = 0x3C;
+		if (useCompression) EDAT->flags = (0x0C | EDAT_COMPRESSED_FLAG);
 		if (isSDAT) EDAT->flags |= SDAT_FLAG;
-		if (useCompression) EDAT->flags |= EDAT_COMPRESSED_FLAG;
 	}
 
 	if (block == 32)
 		EDAT->block_size = 0x8000;
 	else
 		EDAT->block_size = 0x4000;
-	
+
 	EDAT->file_size = input_file_size;
 
 	printf("NPD HEADER\n");
@@ -1160,7 +1213,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 		printf("SDAT HEADER\n");
 		printf("SDAT flags: 0x%08X\n", EDAT->flags);
 		printf("SDAT block size: 0x%08X\n", EDAT->block_size);
-		printf("SDAT file size: 0x%08X\n", EDAT->file_size);
+		printf("SDAT file size: 0x%llX\n", EDAT->file_size);
 		printf("\n");
 
 		// Generate SDAT key.
@@ -1171,7 +1224,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 		printf("EDAT HEADER\n");
 		printf("EDAT flags: 0x%08X\n", EDAT->flags);
 		printf("EDAT block size: 0x%08X\n", EDAT->block_size);
-		printf("EDAT file size: 0x%08X\n", EDAT->file_size);
+		printf("EDAT file size: 0x%llX\n", EDAT->file_size);
 		printf("\n");
 
 		// Select EDAT key.
@@ -1218,7 +1271,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 	{
 		int i;
 		printf("ENCRYPTION KEY: ");
-		for(i = 0; i < 0x10; i++)
+		for (i = 0; i < 0x10; i++)
 			printf("%02X", key[i]);
 		printf("\n\n");
 	}
@@ -1250,7 +1303,10 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 
 	printf("Encrypting data...\n");
 	if (encrypt_data(input, output, EDAT, NPD, key, verbose))
+	{
 		printf("Encryption failed!");
+		return 1;
+	}
 	else
 		printf("File successfully encrypted!");
 
@@ -1258,7 +1314,10 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 
 	printf("Forging data...\n");
 	if (forge_data(key, EDAT, NPD, output))
+	{
 		printf("Forging failed!\n");
+		return 1;
+	}
 	else
 		printf("File successfully forged!\n");
 
@@ -1270,13 +1329,12 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 
 void print_usage()
 {
-	printf("**********************************************************************\n\n");
-	printf("make_npdata v1.2 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
-	printf("                 - Written by Hykem (C).\n\n");
-	printf("**********************************************************************\n\n");
-	printf("Usage: make_npdata [-v] -e <input> <output> <version> <license>\n");
-	printf("                           <type> <format> <block> <compress>\n");
-	printf("                           <cID> <klic> <rap>\n");
+	printf("************************************************************************\n\n");
+	printf("make_npdata v1.3.0 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
+	printf("                   - Written by Hykem (C).\n\n");
+	printf("************************************************************************\n\n");
+	printf("Usage: make_npdata [-v] -e <input> <output> <version> <block> <compress>\n");
+	printf("                           <format> <license> <type> <cID> <klic> <rap>\n");
 	printf("       make_npdata [-v] -d <input> <output> <klic> <rap>\n");
 	printf("       make_npdata [-v] -b <input> <source> <mode>\n\n");
 	printf("- Modes:\n");
@@ -1286,10 +1344,16 @@ void print_usage()
 	printf("[-b]: Bruteforce mode\n");
 	printf("\n");
 	printf("- Encryption mode only:\n");
-	printf("<version>:  1 - EDAT/SDAT version 1\n");
+	printf("<version>:  1 - EDAT version 1\n");
 	printf("            2 - EDAT/SDAT version 2\n");
 	printf("            3 - EDAT/SDAT version 3\n");
 	printf("            4 - EDAT/SDAT version 4\n");
+	printf("<block>:    16 - Default block size\n");
+	printf("            32 - Maximum block size\n");
+	printf("<compress>: 0 - Disable compression\n");
+	printf("            1 - Enable compression\n");
+	printf("<format>:   0 - EDAT\n");
+	printf("            1 - SDAT\n");
 	printf("<license>:  0 - Debug license (SDAT)\n");
 	printf("            1 - Network license (not supported)\n");
 	printf("            2 - Local license (uses RAP file as key)\n");
@@ -1299,13 +1363,7 @@ void print_usage()
 	printf("            32 - PSP Remasters\n");
 	printf("            33 - Modules (disc bind)\n");
 	printf("            48 - Unknown\n");
-	printf("<format>:   0 - EDAT\n");
-	printf("            1 - SDAT\n");
-	printf("<block>:    16 - Default block size\n");
-	printf("            32 - Maximum block size\n");
-	printf("<compress>: 0 - Disable compression\n");
-	printf("            1 - Enable compression\n");
-	printf("<cID>: Content ID (XXYYYY-AAAABBBBB_CC-DDDDDDDDDDDDDDDD)\n");
+	printf("<cID>:      Content ID (XXYYYY-AAAABBBBB_CC-DDDDDDDDDDDDDDDD)\n");
 	printf("\n");
 	printf("- Encryption and decryption modes:\n");
 	printf("<klic>: 0 - No key (SDAT)\n");
@@ -1316,13 +1374,14 @@ void print_usage()
 	printf("        5 - PSX key (PSOne Classics)\n");
 	printf("        6 - PSP key 1 (PSP Minis)\n");
 	printf("        7 - PSP key 2 (PSP Remasters)\n");
-	printf("        8 - Custom key (read from klic.bin)\n");
+	printf("        8 - Custom key (read from input or klic.bin file)\n");
 	printf("<rap>: RAP file for encryption/decryption (optional)\n");
 	printf("\n");
 	printf("- Bruteforce mode:\n");
 	printf("<source>: ELF file source for klic\n");
 	printf("<mode>: 0 - Binary\n");
 	printf("        1 - Text\n");
+	printf("        2 - Unicode text\n");
 }
 
 int main(int argc, char **argv)
@@ -1345,7 +1404,7 @@ int main(int argc, char **argv)
 	}
 
 	// Check which mode we're using (encryption/decryption/bruteforce).
-	if ((!strcmp(argv[arg_offset + 1], "-e")) && (argc > (arg_offset + 11)))
+	if ((!strcmp(argv[arg_offset + 1], "-e")) && (argc > (arg_offset + 6)))
 	{
 		// Skip the mode argument.
 		arg_offset++;
@@ -1358,62 +1417,94 @@ int main(int argc, char **argv)
 
 		// Read all the necessary parameters for encryption.
 		int version = atoi(argv[arg_offset + 3]);
-		int license = atoi(argv[arg_offset + 4]);
-		int type = atoi(argv[arg_offset + 5]);
+		int block = atoi(argv[arg_offset + 4]);
+		int compression = atoi(argv[arg_offset + 5]);
 		int format = atoi(argv[arg_offset + 6]);
-		int block = atoi(argv[arg_offset + 7]);
-		int compression = atoi(argv[arg_offset + 8]);
+		int license = 0;
+		int type = 0;
 
 		char cID[0x30];
 		memset(cID, 0, 0x30);
-		strcpy(cID, argv[arg_offset + 9]);
 
 		// Check for invalid parameters.
 		if (((version > 4) && (version < 1))
-			|| ((license > 3) && (license < 0)
-			|| ((format > 1) && (format < 0))
 			|| ((block != 16) && (block != 32))
 			|| ((compression > 1) && (compression < 0))
-			|| (cID == NULL)))
+			|| ((format > 1) && (format < 0)))
 		{
 			printf("ERROR: Invalid parameters!\n");
 			return 0;
 		}
 
-		// Select the EDAT key mode.
-		int edat_mode = atoi(argv[arg_offset + 10]);
+		// Set emtpy key and klic.
 		unsigned char rifkey[0x10];
 		unsigned char devklic[0x10];
 		memset(rifkey, 0, 0x10);
 		memset(devklic, 0, 0x10);
 
-		switch (edat_mode) 
+		// EDAT mode only.
+		if (!format)
 		{
-		case 0:
-			break;
-		case 1:
-			memcpy(devklic, NPDRM_OMAC_KEY_1, 0x10);
-			break;
-		case 2:
-			memcpy(devklic, NPDRM_OMAC_KEY_2, 0x10);
-			break;
-		case 3:
-			memcpy(devklic, NPDRM_OMAC_KEY_3, 0x10);
-			break;
-		case 4:
-			memcpy(devklic, NPDRM_KLIC_KEY, 0x10);
-			break;
-		case 5:
-			memcpy(devklic, NPDRM_PSX_KEY, 0x10);
-			break;
-		case 6:
-			memcpy(devklic, NPDRM_PSP_KEY_1, 0x10);
-			break;
-		case 7:
-			memcpy(devklic, NPDRM_PSP_KEY_2, 0x10);
-			break;
-		case 8: 
+			if (argc < (arg_offset + 11))
 			{
+				printf("ERROR: Invalid parameters!\n");
+				return 0;
+			}
+
+			license = atoi(argv[arg_offset + 7]);
+			type = atoi(argv[arg_offset + 8]);
+			strcpy(cID, argv[arg_offset + 9]);
+
+			if (((license > 3) && (license < 0)) || (cID == NULL))
+			{
+				printf("ERROR: Invalid parameters!\n");
+				return 0;
+			}
+
+			// Select the EDAT key mode.
+			int edat_mode = atoi(argv[arg_offset + 10]);
+
+			switch (edat_mode)
+			{
+			case 0:
+				break;
+			case 1:
+				memcpy(devklic, NPDRM_OMAC_KEY_1, 0x10);
+				break;
+			case 2:
+				memcpy(devklic, NPDRM_OMAC_KEY_2, 0x10);
+				break;
+			case 3:
+				memcpy(devklic, NPDRM_OMAC_KEY_3, 0x10);
+				break;
+			case 4:
+				memcpy(devklic, NPDRM_KLIC_KEY, 0x10);
+				break;
+			case 5:
+				memcpy(devklic, NPDRM_PSX_KEY, 0x10);
+				break;
+			case 6:
+				memcpy(devklic, NPDRM_PSP_KEY_1, 0x10);
+				break;
+			case 7:
+				memcpy(devklic, NPDRM_PSP_KEY_2, 0x10);
+				break;
+			case 8:
+			{
+				// Read from console input.
+				if (argv[arg_offset + 11] != NULL)
+				{
+					if (is_hex(argv[arg_offset + 11], 0x20))
+					{
+						unsigned char custom_klic[0x10];
+						hex_to_bytes(custom_klic, argv[arg_offset + 11], 0x20);
+						memcpy(devklic, custom_klic, 0x10);
+						arg_offset++;
+
+						break;
+					}
+				}
+
 				// Read a custom binary klic from klic.bin (user supplied file).
 				FILE* klic_file = fopen("klic.bin", "rb");
 
@@ -1432,24 +1523,25 @@ int main(int argc, char **argv)
 
 				break;
 			}
-		default:
-			printf("ERROR: Invalid mode!\n");
-			return 0;
-		}
+			default:
+				printf("ERROR: Invalid mode!\n");
+				return 0;
+			}
 
-		// Read the RAP file, if provided.
-		if (argv[arg_offset + 11] != NULL)
-		{
-			FILE* rap = fopen(argv[arg_offset + 11], "rb");
+			// Read the RAP file, if provided.
+			if (argv[arg_offset + 11] != NULL)
+			{
+				FILE* rap = fopen(argv[arg_offset + 11], "rb");
 
-			unsigned char rapkey[0x10];
-			memset(rapkey, 0, 0x10);
+				unsigned char rapkey[0x10];
+				memset(rapkey, 0, 0x10);
 
-			fread(rapkey, sizeof(rapkey), 1, rap);
+				fread(rapkey, sizeof(rapkey), 1, rap);
 
-			get_rif_key(rapkey, rifkey);
+				get_rif_key(rapkey, rifkey);
 
-			fclose(rap);
+				fclose(rap);
+			}
 		}
 
 		// Delete the bad output file if any errors arise.
@@ -1484,7 +1576,7 @@ int main(int argc, char **argv)
 		memset(rifkey, 0, 0x10);
 		memset(devklic, 0, 0x10);
 
-		switch (edat_mode) 
+		switch (edat_mode)
 		{
 		case 0:
 			break;
@@ -1509,26 +1601,40 @@ int main(int argc, char **argv)
 		case 7:
 			memcpy(devklic, NPDRM_PSP_KEY_2, 0x10);
 			break;
-		case 8: 
+		case 8:
+		{
+			// Read from console input.
+			if (argv[arg_offset + 4] != NULL)
 			{
-				// Read a custom binary klic from klic.bin (user supplied file).
-				FILE* klic_file = fopen("klic.bin", "rb");
-
-				if (klic_file != NULL)
+				if (is_hex(argv[arg_offset + 4], 0x20))
 				{
 					unsigned char custom_klic[0x10];
-					fread(custom_klic, 0x10, 1, klic_file);
+					hex_to_bytes(custom_klic, argv[arg_offset + 4], 0x20);
 					memcpy(devklic, custom_klic, 0x10);
-					fclose(klic_file);
-				}
-				else
-				{
-					printf("ERROR: Please place your binary custom klic in a klic.bin file!\n");
-					return 0;
-				}
+					arg_offset++;
 
-				break;
+					break;
+				}
 			}
+
+			// Read a custom binary klic from klic.bin (user supplied file).
+			FILE* klic_file = fopen("klic.bin", "rb");
+
+			if (klic_file != NULL)
+			{
+				unsigned char custom_klic[0x10];
+				fread(custom_klic, 0x10, 1, klic_file);
+				memcpy(devklic, custom_klic, 0x10);
+				fclose(klic_file);
+			}
+			else
+			{
+				printf("ERROR: Please place your binary custom klic in a klic.bin file!\n");
+				return 0;
+			}
+
+			break;
+		}
 		default:
 			printf("ERROR: Invalid mode!\n");
 			return 0;
@@ -1579,7 +1685,7 @@ int main(int argc, char **argv)
 		if (argv[arg_offset + 3] != NULL)
 		{
 			mode = atoi(argv[arg_offset + 3]);
-			if ((mode != 0) && (mode != 1))
+			if ((mode != 0) && (mode != 1) && (mode != 2))
 			{
 				printf("ERROR: Invalid parameters!\n");
 				return 0;
@@ -1587,9 +1693,9 @@ int main(int argc, char **argv)
 		}
 
 		// Get the source file size.
-		fseek(source, 0, SEEK_END);
-		int source_file_size = ftell(source);
-		fseek(source, 0, SEEK_SET);
+		fseeko64(source, 0, SEEK_END);
+		long long source_file_size = ftello64(source);
+		fseeko64(source, 0, SEEK_SET);
 
 		// Set up testing keys and hash.
 		unsigned char test_key[0x10];
@@ -1603,22 +1709,26 @@ int main(int argc, char **argv)
 		char test_klicensee_text[0x20];
 		memset(test_klicensee_text, 0, 0x20);
 
+		// Buffer to handle klicensee as unicode text.
+		char test_klicensee_unicode_text[0x40];
+		memset(test_klicensee_unicode_text, 0, 0x40);
+
 		// Read the file's header magic and seek back.
 		unsigned char magic[0x4];
 		fread(magic, 0x4, 1, input);
-		fseek(input, 0, SEEK_SET);
+		fseeko64(input, 0, SEEK_SET);
 
 		// If header starts with SCE, the file is a SELF or SPRX.
 		// If not, assume regular EDAT/SDAT (NPD).
-		unsigned char sce_magic[4] = {0x53, 0x43, 0x45, 0x00};  //SCE0
-		if(!memcmp(magic, sce_magic, 4))
+		unsigned char sce_magic[4] = { 0x53, 0x43, 0x45, 0x00 };  //SCE0
+		if (!memcmp(magic, sce_magic, 4))
 		{
 			// File is SCE, read the NPD dev_hash offset from the
 			// first 0x10 bytes of the SCE header and seek to the NPD area.	
 			unsigned char sce_header[0x10];
 			fread(sce_header, 0x10, 1, input);
 			short npd_offset = se16(*(short*)&sce_header[0xE]) - 0x60;
-			fseek(input, npd_offset, SEEK_SET);
+			fseeko64(input, npd_offset, SEEK_SET);
 
 			if (verbose)
 			{
@@ -1636,14 +1746,16 @@ int main(int argc, char **argv)
 
 		if (verbose)
 		{
-			if (mode)
+			if (mode == 1)
 				printf("MODE: Text\n");
+			else if (mode == 2)
+				printf("MODE: Unicode text\n");
 			else
 				printf("MODE: Binary\n");
 
 			int i;
 			printf("DEV HASH: ");
-			for(i = 0; i < 0x10; i++)
+			for (i = 0; i < 0x10; i++)
 				printf("%02X", test_dev_hash[i]);
 			printf("\n\n");
 		}
@@ -1652,15 +1764,30 @@ int main(int argc, char **argv)
 
 		int i;
 		bool found = false;
-		for (i = 0; i < source_file_size; i ++)
+		for (i = 0; i < source_file_size; i++)
 		{
 			// Iterate the source file and generate klicensee xor key.
-			fseek(source, i, SEEK_SET);
+			fseeko64(source, i, SEEK_SET);
 
 			// If reading in text mode, convert the hexadecimal string to binary data.
-			if (mode)
+			if (mode == 1)
 			{
 				fread(test_klicensee_text, 0x20, 1, source);
+
+				// If the string is not a valid hexadecimal string, continue the loop.
+				if (!is_hex(test_klicensee_text, 0x20)) continue;
+				hex_to_bytes(test_klicensee, test_klicensee_text, 0x20);
+			}
+			else if (mode == 2)
+			{
+				fread(test_klicensee_unicode_text, 0x40, 1, source);
+
+				// Convert unicode fullwidth to plain text.
+				int uni_count;
+				int txt_count = 0;
+				for (uni_count = 0; uni_count < 0x40; uni_count += 2)
+					test_klicensee_text[txt_count++] = test_klicensee_unicode_text[uni_count + 1];
+
 				// If the string is not a valid hexadecimal string, continue the loop.
 				if (!is_hex(test_klicensee_text, 0x20)) continue;
 				hex_to_bytes(test_klicensee, test_klicensee_text, 0x20);

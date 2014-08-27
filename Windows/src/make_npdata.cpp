@@ -134,18 +134,18 @@ bool decrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, uns
 		printf("ERROR: Unknown crypto algorithm!\n");
 		return false;
 	}
-
+	
 	if ((hash_mode & 0xFF) == 0x01) // 0x14 SHA1-HMAC
 	{
-		return hmac_hash_compare(hash_final_14, 0x14, in, length, test_hash);
+		return hmac_hash_compare(hash_final_14, 0x14, in, length, test_hash, 0x14);
 	}
 	else if ((hash_mode & 0xFF) == 0x02)  // 0x10 AES-CMAC
 	{
-		return cmac_hash_compare(hash_final_10, 0x10, in, length, test_hash);
+		return cmac_hash_compare(hash_final_10, 0x10, in, length, test_hash, 0x10);
 	}
 	else if ((hash_mode & 0xFF) == 0x04) //0x10 SHA1-HMAC
 	{
-		return hmac_hash_compare(hash_final_10, 0x10, in, length, test_hash);
+		return hmac_hash_compare(hash_final_10, 0x10, in, length, test_hash, 0x10);
 	}
 	else
 	{
@@ -568,7 +568,85 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 		if (verbose)
 			printf("WARNING: Metadata section hash is invalid!\n");
 	}
-
+	
+	// Checking ECDSA signatures.
+	if ((edat->flags & EDAT_DEBUG_DATA_FLAG) == 0)
+	{
+		printf("Checking signatures...\n");
+		
+		// Setup buffers.
+		unsigned char metadata_signature[0x28];
+		unsigned char header_signature[0x28];
+		unsigned char signature_hash[20];
+		unsigned char signature_r[0x15];
+		unsigned char signature_s[0x15];
+		memset(metadata_signature, 0, 0x28);
+		memset(header_signature, 0, 0x28);
+		memset(signature_hash, 0, 20);
+		memset(signature_r, 0, 0x15);
+		memset(signature_s, 0, 0x15);
+		
+		// Setup ECDSA curve and public key.
+		ecdsa_set_curve(VSH_CURVE_P, VSH_CURVE_A, VSH_CURVE_B, VSH_CURVE_N, VSH_CURVE_GX, VSH_CURVE_GY);
+		ecdsa_set_pub(VSH_PUB);
+	
+		
+		// Read in the metadata and header signatures.
+		_fseeki64(f, 0xB0, SEEK_SET);
+		fread(metadata_signature, 0x28, 1, f);
+		_fseeki64(f, 0xD8, SEEK_SET);
+		fread(header_signature, 0x28, 1, f);
+		
+		// Checking metadata signature.
+		// Setup signature r and s.
+		memcpy(signature_r + 01, metadata_signature, 0x14);
+		memcpy(signature_s + 01, metadata_signature + 0x14, 0x14);
+		
+		// Setup signature hash.
+		if ((edat->flags & EDAT_FLAG_0x20) != 0) //Sony failed again, they used buffer from 0x100 with half size of real metadata.
+		{
+			int metadata_buf_size = block_num * 0x10;
+			unsigned char *metadata_buf = new unsigned char[metadata_buf_size];
+			_fseeki64(f, metadata_offset, SEEK_SET);
+			fread(metadata_buf, metadata_buf_size, 1, f);
+			sha1(metadata_buf, metadata_buf_size, signature_hash);
+			delete[] metadata_buf;
+		}
+		else
+		{
+			sha1(metadata, metadata_size, signature_hash);
+		}
+		
+		if (ecdsa_verify(signature_hash, signature_r, signature_s))
+				printf("Metadata signature is valid!\n");
+			else
+			{
+				printf("Metadata signature is invalid!\n");
+				if (((unsigned long long)edat->block_size * block_num) > 0x100000000)
+					printf("*Due to large file size, metadata signature status may be incorrect!\n");
+			}
+		
+		// Checking header signature.
+		// Setup header signature r and s.
+		memset(signature_r, 0, 0x15);
+		memset(signature_s, 0, 0x15);
+		memcpy(signature_r + 01, header_signature, 0x14);
+		memcpy(signature_s + 01, header_signature + 0x14, 0x14);
+		
+		// Setup header signature hash.
+		memset(signature_hash, 0, 20);
+		unsigned char *header_buf = new unsigned char[0xD8];
+		_fseeki64(f, 0x00, SEEK_SET);
+		fread(header_buf, 0xD8, 1, f);
+		sha1(header_buf, 0xD8, signature_hash );
+		delete[] header_buf;
+		
+		if (ecdsa_verify(signature_hash, signature_r, signature_s))
+			printf("Header signature is valid!\n");
+		else
+			printf("Header signature is invalid!\n");
+	}
+	
 	// Cleanup.
 	delete[] metadata;
 	delete[] empty_metadata;
@@ -604,7 +682,7 @@ int validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HEA
 	memcpy(dev + 0xC, &type, 4);
 
 	// Hash with NPDRM_OMAC_KEY_3 and compare with title_hash.
-	title_hash_result = cmac_hash_compare(NPDRM_OMAC_KEY_3, 0x10, buf, 0x30 + file_name_length, npd->title_hash);
+	title_hash_result = cmac_hash_compare(NPDRM_OMAC_KEY_3, 0x10, buf, 0x30 + file_name_length, npd->title_hash, 0x10);
 
 	if (verbose)
 	{
@@ -639,7 +717,7 @@ int validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HEA
 		xor(key, klicensee, NPDRM_OMAC_KEY_2, 0x10);
 
 		// Hash with generated key and compare with dev_hash.
-		dev_hash_result = cmac_hash_compare(key, 0x10, dev, 0x60, npd->dev_hash);
+		dev_hash_result = cmac_hash_compare(key, 0x10, dev, 0x60, npd->dev_hash, 0x10);
 
 		if (verbose)
 		{
@@ -652,7 +730,7 @@ int validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HEA
 
 	delete[] buf;
 
-	return (title_hash_result & dev_hash_result);
+	return (title_hash_result && dev_hash_result);
 }
 
 bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsigned char* devklic, unsigned char* rifkey, bool verbose)
@@ -726,7 +804,7 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 			// Ignore header validation in DEBUG data.
 			if ((EDAT->flags & EDAT_DEBUG_DATA_FLAG) != EDAT_DEBUG_DATA_FLAG)
 			{
-				printf("ERROR: NPD hash validation failed!");
+				printf("ERROR: NPD hash validation failed!\n");
 				return 1;
 			}
 		}
@@ -971,6 +1049,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			unsigned char hash_result_2[0x10];
 			memset(hash_result_2, 0, 0x10);
 			prng(hash_result_2, 0x10);
+			memcpy(hash_result_2, hash_result + 0x10, 0x04);
 
 			int j;
 			for (j = 0; j < 0x10; j++)
@@ -1882,7 +1961,7 @@ int main(int argc, char **argv)
 				fread(test_klicensee, 0x10, 1, source);
 
 			xor(test_key, test_klicensee, NPDRM_OMAC_KEY_2, 0x10);
-			if (cmac_hash_compare(test_key, 0x10, npd_buf, 0x60, test_dev_hash))
+			if (cmac_hash_compare(test_key, 0x10, npd_buf, 0x60, test_dev_hash, 0x10))
 			{
 				found = true;
 				break;

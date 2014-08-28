@@ -925,7 +925,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 	{
 		memset(hash_result, 0, 0x14);
 
-		offset = i * edat->block_size;
+		offset = (unsigned long long)i * edat->block_size;
 		length = edat->block_size;
 
 		if ((i == (block_num - 1)) && (edat->file_size % edat->block_size))

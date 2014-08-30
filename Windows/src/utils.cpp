@@ -2,9 +2,13 @@
 // Licensed under the terms of the GNU GPL, version 3
 // http://www.gnu.org/licenses/gpl-3.0.txt
 
+
 #include "utils.h"
 #include <stdio.h>
 #include <time.h>
+
+
+
 
 // Auxiliary functions (endian swap, xor and prng).
 short se16(short i)
@@ -194,6 +198,17 @@ void cmac_hash_forge(unsigned char *key, int key_len, unsigned char *in, int in_
 	aes_context ctx;
 	aes_setkey_enc(&ctx, key, 128);
 	aes_cmac(&ctx, in_len, in, hash);
+}
+
+char* extract_file_name(const char* file_path, char real_file_name[MAX_PATH])
+{
+	size_t file_path_len = strlen(file_path);
+	const char* p = strrchr(file_path, '/');
+	if (!p) p = strrchr(file_path, '\\');
+	if (p) file_path_len = file_path + file_path_len - p - 1;
+	strncpy(real_file_name, p ? (p + 1) : file_path, file_path_len + 1);
+	
+	return real_file_name;
 }
 
 

@@ -395,6 +395,8 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			{
 				if (verbose)
 					printf("WARNING: Block at offset 0x%llx has invalid hash!\n", offset);
+					
+				return 1;
 			}
 		}
 
@@ -568,85 +570,95 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 		if (verbose)
 			printf("WARNING: Metadata section hash is invalid!\n");
 	}
-	
+
 	// Checking ECDSA signatures.
 	if ((edat->flags & EDAT_DEBUG_DATA_FLAG) == 0)
 	{
 		printf("Checking signatures...\n");
-		
+
 		// Setup buffers.
 		unsigned char metadata_signature[0x28];
 		unsigned char header_signature[0x28];
 		unsigned char signature_hash[20];
 		unsigned char signature_r[0x15];
 		unsigned char signature_s[0x15];
+		unsigned char zero_buf[0x15];
 		memset(metadata_signature, 0, 0x28);
 		memset(header_signature, 0, 0x28);
 		memset(signature_hash, 0, 20);
 		memset(signature_r, 0, 0x15);
 		memset(signature_s, 0, 0x15);
-		
+		memset(zero_buf, 0, 0x15);
+
 		// Setup ECDSA curve and public key.
 		ecdsa_set_curve(VSH_CURVE_P, VSH_CURVE_A, VSH_CURVE_B, VSH_CURVE_N, VSH_CURVE_GX, VSH_CURVE_GY);
 		ecdsa_set_pub(VSH_PUB);
-	
-		
+
+
 		// Read in the metadata and header signatures.
 		_fseeki64(f, 0xB0, SEEK_SET);
 		fread(metadata_signature, 0x28, 1, f);
 		_fseeki64(f, 0xD8, SEEK_SET);
 		fread(header_signature, 0x28, 1, f);
-		
+
 		// Checking metadata signature.
 		// Setup signature r and s.
 		memcpy(signature_r + 01, metadata_signature, 0x14);
 		memcpy(signature_s + 01, metadata_signature + 0x14, 0x14);
-		
-		// Setup signature hash.
-		if ((edat->flags & EDAT_FLAG_0x20) != 0) //Sony failed again, they used buffer from 0x100 with half size of real metadata.
-		{
-			int metadata_buf_size = block_num * 0x10;
-			unsigned char *metadata_buf = new unsigned char[metadata_buf_size];
-			_fseeki64(f, metadata_offset, SEEK_SET);
-			fread(metadata_buf, metadata_buf_size, 1, f);
-			sha1(metadata_buf, metadata_buf_size, signature_hash);
-			delete[] metadata_buf;
-		}
+		if ((!memcmp(signature_r, zero_buf, 0x15)) || (!memcmp(signature_s, zero_buf, 0x15)))
+			printf("Metadata signature is invalid!\n");
 		else
 		{
-			sha1(metadata, metadata_size, signature_hash);
-		}
-		
-		if (ecdsa_verify(signature_hash, signature_r, signature_s))
-				printf("Metadata signature is valid!\n");
+			// Setup signature hash.
+			if ((edat->flags & EDAT_FLAG_0x20) != 0) //Sony failed again, they used buffer from 0x100 with half size of real metadata.
+			{
+				int metadata_buf_size = block_num * 0x10;
+				unsigned char *metadata_buf = new unsigned char[metadata_buf_size];
+				_fseeki64(f, metadata_offset, SEEK_SET);
+				fread(metadata_buf, metadata_buf_size, 1, f);
+				sha1(metadata_buf, metadata_buf_size, signature_hash);
+				delete[] metadata_buf;
+			}
 			else
+				sha1(metadata, metadata_size, signature_hash);
+
+			if (!ecdsa_verify(signature_hash, signature_r, signature_s))
 			{
 				printf("Metadata signature is invalid!\n");
 				if (((unsigned long long)edat->block_size * block_num) > 0x100000000)
 					printf("*Due to large file size, metadata signature status may be incorrect!\n");
 			}
-		
+			else
+				printf("Metadata signature is valid!\n");
+		}
+
+
 		// Checking header signature.
 		// Setup header signature r and s.
 		memset(signature_r, 0, 0x15);
 		memset(signature_s, 0, 0x15);
 		memcpy(signature_r + 01, header_signature, 0x14);
 		memcpy(signature_s + 01, header_signature + 0x14, 0x14);
-		
-		// Setup header signature hash.
-		memset(signature_hash, 0, 20);
-		unsigned char *header_buf = new unsigned char[0xD8];
-		_fseeki64(f, 0x00, SEEK_SET);
-		fread(header_buf, 0xD8, 1, f);
-		sha1(header_buf, 0xD8, signature_hash );
-		delete[] header_buf;
-		
-		if (ecdsa_verify(signature_hash, signature_r, signature_s))
-			printf("Header signature is valid!\n");
-		else
+
+		if ((!memcmp(signature_r, zero_buf, 0x15)) || (!memcmp(signature_s, zero_buf, 0x15)))
 			printf("Header signature is invalid!\n");
+		else
+		{
+			// Setup header signature hash.
+			memset(signature_hash, 0, 20);
+			unsigned char *header_buf = new unsigned char[0xD8];
+			_fseeki64(f, 0x00, SEEK_SET);
+			fread(header_buf, 0xD8, 1, f);
+			sha1(header_buf, 0xD8, signature_hash );
+			delete[] header_buf;
+
+			if (ecdsa_verify(signature_hash, signature_r, signature_s))
+				printf("Header signature is valid!\n");
+			else
+				printf("Header signature is invalid!\n");
+		}
 	}
-	
+
 	// Cleanup.
 	delete[] metadata;
 	delete[] empty_metadata;
@@ -799,7 +811,9 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 		printf("\n");
 
 		// Perform header validation (EDAT only).
-		if (!validate_npd_hashes(input_file_name, devklic, NPD, verbose))
+		char real_file_name[MAX_PATH];
+		extract_file_name(input_file_name, real_file_name);
+		if (!validate_npd_hashes(real_file_name, devklic, NPD, verbose))
 		{
 			// Ignore header validation in DEBUG data.
 			if ((EDAT->flags & EDAT_DEBUG_DATA_FLAG) != EDAT_DEBUG_DATA_FLAG)
@@ -1295,7 +1309,9 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 		NPD->type = type;
 		memcpy(NPD->content_id, content_id, 0x30);
 		memcpy(NPD->digest, fake_digest, 0x10);
-		forge_npd_title_hash(input_file_name, NPD);
+		char real_file_name[MAX_PATH];
+		extract_file_name(input_file_name, real_file_name);
+		forge_npd_title_hash(real_file_name, NPD);
 		forge_npd_dev_hash(devklic, NPD);
 		NPD->unk1 = 0;
 		NPD->unk2 = 0;
@@ -1689,19 +1705,26 @@ int main(int argc, char **argv)
 			if (argv[arg_offset + 12] != NULL)
 			{
 				FILE* rap = fopen(argv[arg_offset + 12], "rb");
+				if (rap != NULL)
+				{
+					unsigned char rapkey[0x10];
+					memset(rapkey, 0, 0x10);
 
-				unsigned char rapkey[0x10];
-				memset(rapkey, 0, 0x10);
+					fread(rapkey, sizeof(rapkey), 1, rap);
 
-				fread(rapkey, sizeof(rapkey), 1, rap);
+					// Special file name to bypass conversion and read a RIF key directly.
+					if (!strcmp(argv[arg_offset + 12], "rifkey.bin"))
+						memcpy(rifkey, rapkey, 0x10);
+					else
+						get_rif_key(rapkey, rifkey);
 
-				// Special file name to bypass conversion and read a RIF key directly.
-				if (!strcmp(argv[arg_offset + 12], "rifkey.bin"))
-					memcpy(rifkey, rapkey, 0x10);
+					fclose(rap);
+				}
 				else
-					get_rif_key(rapkey, rifkey);
-
-				fclose(rap);
+				{
+					printf("ERROR: Please place your binary rap/rifkey.bin file!\n");
+					return 0;
+				}
 			}
 		}
 
@@ -1805,19 +1828,26 @@ int main(int argc, char **argv)
 		if (argv[arg_offset + 4] != NULL)
 		{
 			FILE* rap = fopen(argv[arg_offset + 4], "rb");
+			if (rap != NULL)
+			{
+				unsigned char rapkey[0x10];
+				memset(rapkey, 0, 0x10);
 
-			unsigned char rapkey[0x10];
-			memset(rapkey, 0, 0x10);
+				fread(rapkey, sizeof(rapkey), 1, rap);
 
-			fread(rapkey, sizeof(rapkey), 1, rap);
+				// Special file name to bypass conversion and read a RIF key directly.
+				if (!strcmp(argv[arg_offset + 4], "rifkey.bin"))
+					memcpy(rifkey, rapkey, 0x10);
+				else
+					get_rif_key(rapkey, rifkey);
 
-			// Special file name to bypass conversion and read a RIF key directly.
-			if (!strcmp(argv[arg_offset + 4], "rifkey.bin"))
-				memcpy(rifkey, rapkey, 0x10);
+				fclose(rap);
+			}
 			else
-				get_rif_key(rapkey, rifkey);
-
-			fclose(rap);
+			{
+				printf("ERROR: Please place your binary rap/rifkey.bin file!\n");
+				return 0;
+			}
 		}
 
 		// Delete the bad output file if any errors arise.

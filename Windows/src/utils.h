@@ -2,6 +2,9 @@
 // Licensed under the terms of the GNU GPL, version 3
 // http://www.gnu.org/licenses/gpl-3.0.txt
 
+#define _CRT_SECURE_NO_WARNINGS
+#define MAX_PATH _MAX_PATH
+
 #include <stdlib.h>
 #include "aes.h"
 #include "sha1.h"
@@ -34,3 +37,4 @@ bool hmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int i
 void hmac_hash_forge(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash);
 bool cmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash, int hash_len);
 void cmac_hash_forge(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash);
+char* extract_file_name(const char* file_path, char real_file_name[MAX_PATH]);

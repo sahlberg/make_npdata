@@ -2,9 +2,13 @@
 // Licensed under the terms of the GNU GPL, version 3
 // http://www.gnu.org/licenses/gpl-3.0.txt
 
+
 #include "utils.h"
 #include <stdio.h>
 #include <time.h>
+
+
+
 
 // Auxiliary functions (endian swap, xor and prng).
 short se16(short i)
@@ -142,13 +146,13 @@ void aesecb128_encrypt(unsigned char *key, unsigned char *in, unsigned char *out
 	aes_crypt_ecb(&ctx, AES_ENCRYPT, in, out);
 }
 
-bool hmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash)
+bool hmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash, int hash_len)
 {
 	unsigned char *out = new unsigned char[key_len];
 
 	sha1_hmac(key, key_len, in, in_len, out);
 
-	for (int i = 0; i < 0x10; i++)
+	for (int i = 0; i < hash_len; i++)
 	{
 		if (out[i] != hash[i])
 		{
@@ -167,7 +171,7 @@ void hmac_hash_forge(unsigned char *key, int key_len, unsigned char *in, int in_
 	sha1_hmac(key, key_len, in, in_len, hash);
 }
 
-bool cmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash)
+bool cmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int in_len, unsigned char *hash, int hash_len)
 {
 	unsigned char *out = new unsigned char[key_len];
 
@@ -175,7 +179,7 @@ bool cmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int i
 	aes_setkey_enc(&ctx, key, 128);
 	aes_cmac(&ctx, in_len, in, out);
 
-	for (int i = 0; i < 0x10; i++)
+	for (int i = 0; i < hash_len; i++)
 	{
 		if (out[i] != hash[i])
 		{
@@ -195,3 +199,16 @@ void cmac_hash_forge(unsigned char *key, int key_len, unsigned char *in, int in_
 	aes_setkey_enc(&ctx, key, 128);
 	aes_cmac(&ctx, in_len, in, hash);
 }
+
+char* extract_file_name(const char* file_path, char real_file_name[MAX_PATH])
+{
+	size_t file_path_len = strlen(file_path);
+	const char* p = strrchr(file_path, '/');
+	if (!p) p = strrchr(file_path, '\\');
+	if (p) file_path_len = file_path + file_path_len - p - 1;
+	strncpy(real_file_name, p ? (p + 1) : file_path, file_path_len + 1);
+	
+	return real_file_name;
+}
+
+

@@ -2,13 +2,9 @@
 // Licensed under the terms of the GNU GPL, version 3
 // http://www.gnu.org/licenses/gpl-3.0.txt
 
-
 #include "utils.h"
 #include <stdio.h>
 #include <time.h>
-
-
-
 
 // Auxiliary functions (endian swap, xor and prng).
 short se16(short i)
@@ -210,5 +206,3 @@ char* extract_file_name(const char* file_path, char real_file_name[MAX_PATH])
 	
 	return real_file_name;
 }
-
-

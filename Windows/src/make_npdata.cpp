@@ -1495,7 +1495,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 void print_usage()
 {
 	printf("***************************************************************************\n\n");
-	printf("make_npdata v1.3.2 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
+	printf("make_npdata v1.3.3 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
 	printf("                   - Written by Hykem (C).\n\n");
 	printf("***************************************************************************\n\n");
 	printf("Usage: make_npdata [-v] -e <input> <output> <format> <data> <version>\n");

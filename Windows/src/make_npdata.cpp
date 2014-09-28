@@ -298,7 +298,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 				compression_end = se32(*(int*)&result[12]);
 				delete[] result;
 			}
-			
+
 			memcpy(hash_result, metadata, 0x10);
 		}
 		else if ((edat->flags & EDAT_FLAG_0x20) != 0)
@@ -1465,13 +1465,11 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 	printf("Encrypting data...\n");
 	if (encrypt_data(input, output, EDAT, NPD, key, verbose))
 	{
-		printf("Encryption failed!");
+		printf("Encryption failed!\n");
 		return 1;
 	}
 	else
-		printf("File successfully encrypted!");
-
-	printf("\n");
+		printf("File successfully encrypted!\n");
 
 	// Only forge finalized data.
 	if (isFinalized)
@@ -1581,7 +1579,13 @@ int main(int argc, char **argv)
 		const char *input_file_name = argv[arg_offset + 1];
 		const char *output_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
-		FILE* output = fopen(output_file_name, "wb+");
+
+		//Check input file
+		if (input == NULL)
+		{
+			printf("ERROR: Please check your input file!\n");
+			return 0;
+		}
 
 		// Read all the necessary parameters for encryption.
 		int format = atoi(argv[arg_offset + 3]);
@@ -1601,7 +1605,7 @@ int main(int argc, char **argv)
 			printf("ERROR: Invalid parameters!\n");
 			return 0;
 		}
-		
+
 		// Optional parameters.
 		int license = 0;
 		int type = 0;
@@ -1705,28 +1709,36 @@ int main(int argc, char **argv)
 			if (argv[arg_offset + 12] != NULL)
 			{
 				FILE* rap = fopen(argv[arg_offset + 12], "rb");
-				if (rap != NULL)
+				unsigned char rapkey[0x10];
+				memset(rapkey, 0, 0x10);
+
+				// Special file name to bypass conversion and read a RIF key directly.
+				char real_rap_name[MAX_PATH];
+				extract_file_name((argv[arg_offset + 12]), real_rap_name);
+				if (!strcmp(real_rap_name, "rifkey.bin"))
 				{
-					unsigned char rapkey[0x10];
-					memset(rapkey, 0, 0x10);
-
-					fread(rapkey, sizeof(rapkey), 1, rap);
-
-					// Special file name to bypass conversion and read a RIF key directly.
-					if (!strcmp(argv[arg_offset + 12], "rifkey.bin"))
-						memcpy(rifkey, rapkey, 0x10);
-					else
-						get_rif_key(rapkey, rifkey);
-
-					fclose(rap);
+					if (rap == NULL)
+					{
+						printf("ERROR: Please place your binary rifkey.bin file!\n");
+						return 0;
+					}
+					fread(rifkey, sizeof(rifkey), 1, rap);
 				}
 				else
 				{
-					printf("ERROR: Please place your binary rap/rifkey.bin file!\n");
-					return 0;
+					if (rap == NULL)
+					{
+						printf("ERROR: Please place your binary rap file!\n");
+						return 0;
+					}
+					fread(rapkey, sizeof(rapkey), 1, rap);
+					get_rif_key(rapkey, rifkey);
 				}
+				fclose(rap);
 			}
 		}
+
+		FILE* output = fopen(output_file_name, "wb+");
 
 		// Delete the bad output file if any errors arise.
 		if (pack_data(input, output, output_file_name, (unsigned char *)cID, devklic, rifkey, version, license, type, block, compression ? true : false, format ? true : false, data ? true : false, verbose))
@@ -1751,7 +1763,13 @@ int main(int argc, char **argv)
 		const char *input_file_name = argv[arg_offset + 1];
 		const char *output_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
-		FILE* output = fopen(output_file_name, "wb");
+
+		//Check input file
+		if (input == NULL)
+		{
+			printf("ERROR: Please check your input file!\n");
+			return 0;
+		}
 
 		// Select the EDAT key mode.
 		int edat_mode = atoi(argv[arg_offset + 3]);
@@ -1828,27 +1846,35 @@ int main(int argc, char **argv)
 		if (argv[arg_offset + 4] != NULL)
 		{
 			FILE* rap = fopen(argv[arg_offset + 4], "rb");
-			if (rap != NULL)
+			unsigned char rapkey[0x10];
+			memset(rapkey, 0, 0x10);
+
+			// Special file name to bypass conversion and read a RIF key directly.
+			char real_rap_name[MAX_PATH];
+			extract_file_name((argv[arg_offset + 4]), real_rap_name);
+			if (!strcmp(real_rap_name, "rifkey.bin"))
 			{
-				unsigned char rapkey[0x10];
-				memset(rapkey, 0, 0x10);
-
-				fread(rapkey, sizeof(rapkey), 1, rap);
-
-				// Special file name to bypass conversion and read a RIF key directly.
-				if (!strcmp(argv[arg_offset + 4], "rifkey.bin"))
-					memcpy(rifkey, rapkey, 0x10);
-				else
-					get_rif_key(rapkey, rifkey);
-
-				fclose(rap);
+				if (rap == NULL)
+				{
+					printf("ERROR: Please place your binary rifkey.bin file!\n");
+					return 0;
+				}
+				fread(rifkey, sizeof(rifkey), 1, rap);
 			}
 			else
 			{
-				printf("ERROR: Please place your binary rap/rifkey.bin file!\n");
-				return 0;
+				if (rap == NULL)
+				{
+					printf("ERROR: Please place your binary rap file!\n");
+					return 0;
+				}
+				fread(rapkey, sizeof(rapkey), 1, rap);
+				get_rif_key(rapkey, rifkey);
 			}
+			fclose(rap);
 		}
+
+		FILE* output = fopen(output_file_name, "wb");
 
 		// Delete the bad output file if any errors arise.
 		if (extract_data(input, output, input_file_name, devklic, rifkey, verbose))
@@ -1874,7 +1900,19 @@ int main(int argc, char **argv)
 		const char *source_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
 		FILE* source = fopen(source_file_name, "rb");
-
+		
+		//Check input and source files
+		if (input == NULL)
+		{
+			printf("ERROR: Please check your input file!\n");
+			return 0;
+		}
+		if (source == NULL)
+		{
+			printf("ERROR: Please check your source file!\n");
+			return 0;
+		}
+		
 		// Read data as plain binary or as text.
 		int mode = 0;
 		if (argv[arg_offset + 3] != NULL)

@@ -206,7 +206,7 @@ bool encrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, uns
 // EDAT/SDAT functions.
 unsigned char* dec_section(unsigned char* metadata)
 {
-	unsigned char *dec = (unsigned char*) malloc (0x10);
+	unsigned char *dec = (unsigned char *) malloc(0x10);
 	dec[0x00] = (metadata[0xC] ^ metadata[0x8] ^ metadata[0x10]);
 	dec[0x01] = (metadata[0xD] ^ metadata[0x9] ^ metadata[0x11]);
 	dec[0x02] = (metadata[0xE] ^ metadata[0xA] ^ metadata[0x12]);
@@ -230,7 +230,7 @@ unsigned char* get_block_key(int block, NPD_HEADER *npd)
 {
 	unsigned char empty_key[0x10] = {};
 	unsigned char *src_key = (npd->version <= 1) ? empty_key : npd->dev_hash;
-	unsigned char *dest_key = (unsigned char*) malloc (0x10);
+	unsigned char *dest_key = (unsigned char *) malloc(0x10);
 	memcpy(dest_key, src_key, 0xC);
 	dest_key[0xC] = (block >> 24 & 0xFF);
 	dest_key[0xD] = (block >> 16 & 0xFF);
@@ -296,7 +296,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 				compression_end = se32(*(int*)&result[12]);
 				free(result);
 			}
-			
+
 			memcpy(hash_result, metadata, 0x10);
 		}
 		else if ((edat->flags & EDAT_FLAG_0x20) != 0)
@@ -339,8 +339,8 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		length = (int)((pad_length + 0xF) & 0xFFFFFFF0);
 
 		// Setup buffers for decryption and read the data.
-		enc_data = (unsigned char*) malloc (length);
-		dec_data = (unsigned char*) malloc (length);
+		enc_data = (unsigned char *) malloc(length);
+		dec_data = (unsigned char *) malloc(length);
 		memset(enc_data, 0, length);
 		memset(dec_data, 0, length);
 		memset(hash, 0, 0x10);
@@ -402,7 +402,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		if (((edat->flags & EDAT_COMPRESSED_FLAG) != 0) && compression_end)
 		{
 			int decomp_size = (int)edat->file_size;
-			unsigned char *decomp_data = (unsigned char*) malloc (decomp_size);
+			unsigned char *decomp_data = (unsigned char *) malloc(decomp_size);
 			memset(decomp_data, 0, decomp_size);
 
 			if (verbose)
@@ -541,8 +541,8 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 
 	long bytes_read = 0;
 	long bytes_to_read = metadata_size;
-	unsigned char *metadata = (unsigned char*) malloc (metadata_size);
-	unsigned char *empty_metadata = (unsigned char*) malloc (metadata_size);
+	unsigned char *metadata = (unsigned char *) malloc(metadata_size);
+	unsigned char *empty_metadata = (unsigned char *) malloc(metadata_size);
 
 	while (bytes_to_read > 0)
 	{
@@ -611,7 +611,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 			if ((edat->flags & EDAT_FLAG_0x20) != 0) //Sony failed again, they used buffer from 0x100 with half size of real metadata.
 			{
 				int metadata_buf_size = block_num * 0x10;
-				unsigned char *metadata_buf = (unsigned char*) malloc (metadata_buf_size);
+				unsigned char *metadata_buf = (unsigned char *) malloc(metadata_buf_size);
 				fseeko64(f, metadata_offset, SEEK_SET);
 				fread(metadata_buf, metadata_buf_size, 1, f);
 				sha1(metadata_buf, metadata_buf_size, signature_hash);
@@ -644,7 +644,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 		{
 			// Setup header signature hash.
 			memset(signature_hash, 0, 20);
-			unsigned char *header_buf = (unsigned char*) malloc (0xD8);
+			unsigned char *header_buf = (unsigned char *) malloc(0xD8);
 			fseeko64(f, 0x00, SEEK_SET);
 			fread(header_buf, 0xD8, 1, f);
 			sha1(header_buf, 0xD8, signature_hash );
@@ -670,7 +670,7 @@ int validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HEA
 	int dev_hash_result = 0;
 
 	int file_name_length = strlen(file_name);
-	unsigned char *buf = (unsigned char*) malloc (0x30 + file_name_length);
+	unsigned char *buf = (unsigned char *) malloc(0x30 + file_name_length);
 	unsigned char dev[0x60];
 	unsigned char key[0x10];
 	memset(dev, 0, 0x60);
@@ -747,8 +747,8 @@ int validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HEA
 bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsigned char* devklic, unsigned char* rifkey, bool verbose)
 {
 	// Setup NPD and EDAT/SDAT structs.
-	NPD_HEADER *NPD = (NPD_HEADER*) malloc (sizeof(NPD_HEADER));
-	EDAT_HEADER *EDAT = (EDAT_HEADER*) malloc (sizeof(EDAT_HEADER));
+	NPD_HEADER *NPD = (NPD_HEADER *) malloc(sizeof(NPD_HEADER));
+	EDAT_HEADER *EDAT = (EDAT_HEADER *) malloc(sizeof(EDAT_HEADER));
 
 	// Read in the NPD and EDAT/SDAT headers.
 	char npd_header[0x80];
@@ -825,7 +825,8 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 		// Select EDAT key.
 		if ((NPD->license & 0x3) == 0x3)           // Type 3: Use supplied devklic.
 			memcpy(key, devklic, 0x10);
-		else if ((NPD->license & 0x2) == 0x2)      // Type 2: Use key from RAP file (RIF key).
+		else if (((NPD->license & 0x2) == 0x2)     // Type 2: Use key from RAP file (RIF key).
+			|| ((NPD->license & 0x1) == 0x1))      // Type 1: Use network activation (RIF key).
 		{
 			memcpy(key, rifkey, 0x10);
 
@@ -842,14 +843,9 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 
 			if (!test)
 			{
-				printf("ERROR: A valid RAP file is needed for this EDAT file!");
+				printf("ERROR: A valid RAP/RIF file is needed for this EDAT file!");
 				return 1;
 			}
-		}
-		else if ((NPD->license & 0x1) == 0x1)      // Type 1: Use network activation.
-		{
-			printf("ERROR: Network license not supported!");
-			return 1;
 		}
 
 		if (verbose)
@@ -950,8 +946,8 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		fseeko64(in, offset, SEEK_SET);
 
 		// Setup buffers for encryption and read the data.
-		enc_data = (unsigned char*) malloc (length);
-		dec_data = (unsigned char*) malloc (length);
+		enc_data = (unsigned char *) malloc(length);
+		dec_data = (unsigned char *) malloc(length);
 		memset(enc_data, 0, length);
 		memset(dec_data, 0, length);
 		memset(hash, 0, 0x10);
@@ -1176,8 +1172,8 @@ int forge_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f)
 
 	long bytes_read = 0;
 	long bytes_to_read = metadata_size;
-	unsigned char *metadata = (unsigned char*) malloc (metadata_size);
-	unsigned char *empty_metadata = (unsigned char*) malloc (metadata_size);
+	unsigned char *metadata = (unsigned char *) malloc(metadata_size);
+	unsigned char *empty_metadata = (unsigned char *) malloc(metadata_size);
 
 	while (bytes_to_read > 0)
 	{
@@ -1235,7 +1231,7 @@ int forge_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f)
 void forge_npd_title_hash(const char* file_name, NPD_HEADER *npd)
 {
 	int file_name_length = strlen(file_name);
-	unsigned char *buf = (unsigned char*) malloc (0x30 + file_name_length);
+	unsigned char *buf = (unsigned char *) malloc(0x30 + file_name_length);
 	unsigned char title_hash[0x10];
 	memset(title_hash, 0, 0x10);
 
@@ -1290,8 +1286,8 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 	fseeko64(input, 0, SEEK_SET);
 
 	// Setup NPD and EDAT/SDAT structs.
-	NPD_HEADER *NPD = (NPD_HEADER*) malloc (sizeof(NPD_HEADER));
-	EDAT_HEADER *EDAT = (EDAT_HEADER*) malloc (sizeof(EDAT_HEADER));
+	NPD_HEADER *NPD = (NPD_HEADER *) malloc(sizeof(NPD_HEADER));
+	EDAT_HEADER *EDAT = (EDAT_HEADER *) malloc(sizeof(EDAT_HEADER));
 
 	// Forge NPD header.
 	unsigned char npd_magic[4] = {0x4E, 0x50, 0x44, 0x00};  //NPD0
@@ -1402,7 +1398,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 
 			if (!test)
 			{
-				printf("ERROR: A valid RAP file is needed for this EDAT file!");
+				printf("ERROR: A valid RAP/RIF file is needed for this EDAT file!");
 				return 1;
 			}
 		}
@@ -1464,13 +1460,11 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 	printf("Encrypting data...\n");
 	if (encrypt_data(input, output, EDAT, NPD, key, verbose))
 	{
-		printf("Encryption failed!");
+		printf("Encryption failed!\n");
 		return 1;
 	}
 	else
-		printf("File successfully encrypted!");
-
-	printf("\n");
+		printf("File successfully encrypted!\n");
 
 	// Only forge finalized data.
 	if (isFinalized)
@@ -1494,7 +1488,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 void print_usage()
 {
 	printf("***************************************************************************\n\n");
-	printf("make_npdata v1.3.3 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
+	printf("make_npdata v1.3.4 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
 	printf("                   - Written by Hykem (C).\n\n");
 	printf("***************************************************************************\n\n");
 	printf("Usage: make_npdata [-v] -e <input> <output> <format> <data> <version>\n");
@@ -1580,7 +1574,14 @@ int main(int argc, char **argv)
 		const char *input_file_name = argv[arg_offset + 1];
 		const char *output_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
-		FILE* output = fopen(output_file_name, "wb+");
+
+		// Check input file.
+		if (input == NULL)
+		{
+			printf("ERROR: Please check your input file!\n");
+			fclose(input);
+			return 0;
+		}
 
 		// Read all the necessary parameters for encryption.
 		int format = atoi(argv[arg_offset + 3]);
@@ -1598,9 +1599,10 @@ int main(int argc, char **argv)
 				&& (block != 8) && (block != 16) && (block != 32))))
 		{
 			printf("ERROR: Invalid parameters!\n");
+			fclose(input);
 			return 0;
 		}
-		
+
 		// Optional parameters.
 		int license = 0;
 		int type = 0;
@@ -1620,6 +1622,7 @@ int main(int argc, char **argv)
 			if (argc < (arg_offset + 12))
 			{
 				printf("ERROR: Not enough parameters for finalized EDAT!\n");
+				fclose(input);
 				return 0;
 			}
 
@@ -1630,6 +1633,7 @@ int main(int argc, char **argv)
 			if (((license > 3) || (license < 1)) || (cID == NULL))
 			{
 				printf("ERROR: Invalid finalized EDAT parameters!\n");
+				fclose(input);
 				return 0;
 			}
 
@@ -1690,6 +1694,8 @@ int main(int argc, char **argv)
 				else
 				{
 					printf("ERROR: Please place your binary custom klic in a klic.bin file!\n");
+					fclose(input);
+					fclose(klic_file);
 					return 0;
 				}
 
@@ -1697,6 +1703,7 @@ int main(int argc, char **argv)
 			}
 			default:
 				printf("ERROR: Invalid klic mode!\n");
+				fclose(input);
 				return 0;
 			}
 
@@ -1704,28 +1711,39 @@ int main(int argc, char **argv)
 			if (argv[arg_offset + 12] != NULL)
 			{
 				FILE* rap = fopen(argv[arg_offset + 12], "rb");
-				if (rap != NULL)
+				unsigned char rapkey[0x10];
+				memset(rapkey, 0, 0x10);
+
+				// Special file name to bypass conversion and read a RIF key directly.
+				char real_rap_name[MAX_PATH];
+				extract_file_name((argv[arg_offset + 12]), real_rap_name);
+				if (!strcmp(real_rap_name, "rifkey.bin"))
 				{
-					unsigned char rapkey[0x10];
-					memset(rapkey, 0, 0x10);
-
-					fread(rapkey, sizeof(rapkey), 1, rap);
-
-					// Special file name to bypass conversion and read a RIF key directly.
-					if (!strcmp(argv[arg_offset + 12], "rifkey.bin"))
-						memcpy(rifkey, rapkey, 0x10);
-					else
-						get_rif_key(rapkey, rifkey);
-
-					fclose(rap);
+					if (rap == NULL)
+					{
+						printf("ERROR: Please place your binary RIF key in a rifkey.bin file!\n");
+						fclose(input);
+						return 0;
+					}
+					fread(rifkey, sizeof(rifkey), 1, rap);
 				}
 				else
 				{
-					printf("ERROR: Please place your binary rap/rifkey.bin file!\n");
-					return 0;
+					if (rap == NULL)
+					{
+						printf("ERROR: Please place your binary RAP key in a rap file!\n");
+						fclose(input);
+						return 0;
+					}
+					fread(rapkey, sizeof(rapkey), 1, rap);
+					get_rif_key(rapkey, rifkey);
 				}
+
+				fclose(rap);
 			}
 		}
+
+		FILE* output = fopen(output_file_name, "wb+");
 
 		// Delete the bad output file if any errors arise.
 		if (pack_data(input, output, output_file_name, (unsigned char *)cID, devklic, rifkey, version, license, type, block, compression ? true : false, format ? true : false, data ? true : false, verbose))
@@ -1750,7 +1768,13 @@ int main(int argc, char **argv)
 		const char *input_file_name = argv[arg_offset + 1];
 		const char *output_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
-		FILE* output = fopen(output_file_name, "wb");
+
+		// Check input file.
+		if (input == NULL)
+		{
+			printf("ERROR: Please check your input file!\n");
+			return 0;
+		}
 
 		// Select the EDAT key mode.
 		int edat_mode = atoi(argv[arg_offset + 3]);
@@ -1813,6 +1837,8 @@ int main(int argc, char **argv)
 			else
 			{
 				printf("ERROR: Please place your binary custom klic in a klic.bin file!\n");
+				fclose(input);
+				fclose(klic_file);
 				return 0;
 			}
 
@@ -1820,6 +1846,7 @@ int main(int argc, char **argv)
 		}
 		default:
 			printf("ERROR: Invalid klic mode!\n");
+			fclose(input);
 			return 0;
 		}
 
@@ -1827,27 +1854,38 @@ int main(int argc, char **argv)
 		if (argv[arg_offset + 4] != NULL)
 		{
 			FILE* rap = fopen(argv[arg_offset + 4], "rb");
-			if (rap != NULL)
+			unsigned char rapkey[0x10];
+			memset(rapkey, 0, 0x10);
+
+			// Special file name to bypass conversion and read a RIF key directly.
+			char real_rap_name[MAX_PATH];
+			extract_file_name((argv[arg_offset + 4]), real_rap_name);
+			if (!strcmp(real_rap_name, "rifkey.bin"))
 			{
-				unsigned char rapkey[0x10];
-				memset(rapkey, 0, 0x10);
-
-				fread(rapkey, sizeof(rapkey), 1, rap);
-
-				// Special file name to bypass conversion and read a RIF key directly.
-				if (!strcmp(argv[arg_offset + 4], "rifkey.bin"))
-					memcpy(rifkey, rapkey, 0x10);
-				else
-					get_rif_key(rapkey, rifkey);
-
-				fclose(rap);
+				if (rap == NULL)
+				{
+					printf("ERROR: Please place your binary RIF key in a rifkey.bin file!\n");
+					fclose(input);
+					return 0;
+				}
+				fread(rifkey, sizeof(rifkey), 1, rap);
 			}
 			else
 			{
-				printf("ERROR: Please place your binary rap/rifkey.bin file!\n");
-				return 0;
+				if (rap == NULL)
+				{
+					printf("ERROR: Please place your binary RAP key in a rap file!\n");
+					fclose(input);
+					return 0;
+				}
+				fread(rapkey, sizeof(rapkey), 1, rap);
+				get_rif_key(rapkey, rifkey);
 			}
+
+			fclose(rap);
 		}
+
+		FILE* output = fopen(output_file_name, "wb");
 
 		// Delete the bad output file if any errors arise.
 		if (extract_data(input, output, input_file_name, devklic, rifkey, verbose))
@@ -1873,7 +1911,21 @@ int main(int argc, char **argv)
 		const char *source_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
 		FILE* source = fopen(source_file_name, "rb");
+		
+		// Check input and source files.
+		if (input == NULL)
+		{
+			printf("ERROR: Please check your input file!\n");
+			return 0;
+		}
 
+		if (source == NULL)
+		{
+			printf("ERROR: Please check your source file!\n");
+			fclose(input);
+			return 0;
+		}
+		
 		// Read data as plain binary or as text.
 		int mode = 0;
 		if (argv[arg_offset + 3] != NULL)
@@ -1882,6 +1934,8 @@ int main(int argc, char **argv)
 			if ((mode != 0) && (mode != 1) && (mode != 2))
 			{
 				printf("ERROR: Invalid parameters!\n");
+				fclose(input);
+				fclose(source);
 				return 0;
 			}
 		}

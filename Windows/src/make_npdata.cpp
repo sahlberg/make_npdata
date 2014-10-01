@@ -826,7 +826,8 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 		// Select EDAT key.
 		if ((NPD->license & 0x3) == 0x3)           // Type 3: Use supplied devklic.
 			memcpy(key, devklic, 0x10);
-		else if ((NPD->license & 0x2) == 0x2)      // Type 2: Use key from RAP file (RIF key).
+		else if (((NPD->license & 0x2) == 0x2)     // Type 2: Use key from RAP file (RIF key).
+			|| ((NPD->license & 0x1) == 0x1))      // Type 1: Use network activation (RIF key).
 		{
 			memcpy(key, rifkey, 0x10);
 
@@ -843,14 +844,9 @@ bool extract_data(FILE *input, FILE *output, const char* input_file_name, unsign
 
 			if (!test)
 			{
-				printf("ERROR: A valid RAP file is needed for this EDAT file!");
+				printf("ERROR: A valid RAP/RIF file is needed for this EDAT file!");
 				return 1;
 			}
-		}
-		else if ((NPD->license & 0x1) == 0x1)      // Type 1: Use network activation.
-		{
-			printf("ERROR: Network license not supported!");
-			return 1;
 		}
 
 		if (verbose)
@@ -1403,7 +1399,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 
 			if (!test)
 			{
-				printf("ERROR: A valid RAP file is needed for this EDAT file!");
+				printf("ERROR: A valid RAP/RIF file is needed for this EDAT file!");
 				return 1;
 			}
 		}
@@ -1493,7 +1489,7 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 void print_usage()
 {
 	printf("***************************************************************************\n\n");
-	printf("make_npdata v1.3.3 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
+	printf("make_npdata v1.3.4 - PS3 EDAT/SDAT file encrypter/decrypter/bruteforcer.\n");
 	printf("                   - Written by Hykem (C).\n\n");
 	printf("***************************************************************************\n\n");
 	printf("Usage: make_npdata [-v] -e <input> <output> <format> <data> <version>\n");
@@ -1580,10 +1576,11 @@ int main(int argc, char **argv)
 		const char *output_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
 
-		//Check input file
+		// Check input file.
 		if (input == NULL)
 		{
 			printf("ERROR: Please check your input file!\n");
+			fclose(input);
 			return 0;
 		}
 
@@ -1603,6 +1600,7 @@ int main(int argc, char **argv)
 				&& (block != 8) && (block != 16) && (block != 32))))
 		{
 			printf("ERROR: Invalid parameters!\n");
+			fclose(input);
 			return 0;
 		}
 
@@ -1625,6 +1623,7 @@ int main(int argc, char **argv)
 			if (argc < (arg_offset + 12))
 			{
 				printf("ERROR: Not enough parameters for finalized EDAT!\n");
+				fclose(input);
 				return 0;
 			}
 
@@ -1635,6 +1634,7 @@ int main(int argc, char **argv)
 			if (((license > 3) || (license < 1)) || (cID == NULL))
 			{
 				printf("ERROR: Invalid finalized EDAT parameters!\n");
+				fclose(input);
 				return 0;
 			}
 
@@ -1695,6 +1695,8 @@ int main(int argc, char **argv)
 				else
 				{
 					printf("ERROR: Please place your binary custom klic in a klic.bin file!\n");
+					fclose(input);
+					fclose(klic_file);
 					return 0;
 				}
 
@@ -1702,6 +1704,7 @@ int main(int argc, char **argv)
 			}
 			default:
 				printf("ERROR: Invalid klic mode!\n");
+				fclose(input);
 				return 0;
 			}
 
@@ -1719,7 +1722,8 @@ int main(int argc, char **argv)
 				{
 					if (rap == NULL)
 					{
-						printf("ERROR: Please place your binary rifkey.bin file!\n");
+						printf("ERROR: Please place your binary RIF key in a rifkey.bin file!\n");
+						fclose(input);
 						return 0;
 					}
 					fread(rifkey, sizeof(rifkey), 1, rap);
@@ -1728,12 +1732,14 @@ int main(int argc, char **argv)
 				{
 					if (rap == NULL)
 					{
-						printf("ERROR: Please place your binary rap file!\n");
+						printf("ERROR: Please place your binary RAP key in a rap file!\n");
+						fclose(input);
 						return 0;
 					}
 					fread(rapkey, sizeof(rapkey), 1, rap);
 					get_rif_key(rapkey, rifkey);
 				}
+
 				fclose(rap);
 			}
 		}
@@ -1764,7 +1770,7 @@ int main(int argc, char **argv)
 		const char *output_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
 
-		//Check input file
+		// Check input file.
 		if (input == NULL)
 		{
 			printf("ERROR: Please check your input file!\n");
@@ -1832,6 +1838,8 @@ int main(int argc, char **argv)
 			else
 			{
 				printf("ERROR: Please place your binary custom klic in a klic.bin file!\n");
+				fclose(input);
+				fclose(klic_file);
 				return 0;
 			}
 
@@ -1839,6 +1847,7 @@ int main(int argc, char **argv)
 		}
 		default:
 			printf("ERROR: Invalid klic mode!\n");
+			fclose(input);
 			return 0;
 		}
 
@@ -1856,7 +1865,8 @@ int main(int argc, char **argv)
 			{
 				if (rap == NULL)
 				{
-					printf("ERROR: Please place your binary rifkey.bin file!\n");
+					printf("ERROR: Please place your binary RIF key in a rifkey.bin file!\n");
+					fclose(input);
 					return 0;
 				}
 				fread(rifkey, sizeof(rifkey), 1, rap);
@@ -1865,12 +1875,14 @@ int main(int argc, char **argv)
 			{
 				if (rap == NULL)
 				{
-					printf("ERROR: Please place your binary rap file!\n");
+					printf("ERROR: Please place your binary RAP key in a rap file!\n");
+					fclose(input);
 					return 0;
 				}
 				fread(rapkey, sizeof(rapkey), 1, rap);
 				get_rif_key(rapkey, rifkey);
 			}
+
 			fclose(rap);
 		}
 
@@ -1901,15 +1913,17 @@ int main(int argc, char **argv)
 		FILE* input = fopen(input_file_name, "rb");
 		FILE* source = fopen(source_file_name, "rb");
 		
-		//Check input and source files
+		// Check input and source files.
 		if (input == NULL)
 		{
 			printf("ERROR: Please check your input file!\n");
 			return 0;
 		}
+
 		if (source == NULL)
 		{
 			printf("ERROR: Please check your source file!\n");
+			fclose(input);
 			return 0;
 		}
 		
@@ -1921,6 +1935,8 @@ int main(int argc, char **argv)
 			if ((mode != 0) && (mode != 1) && (mode != 2))
 			{
 				printf("ERROR: Invalid parameters!\n");
+				fclose(input);
+				fclose(source);
 				return 0;
 			}
 		}

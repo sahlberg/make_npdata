@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS =
+CFLAGS = -D_FILE_OFFSET_BITS=64
 
 ifeq ($(DEBUG), 1)
 CFLAGS+=-g -O0

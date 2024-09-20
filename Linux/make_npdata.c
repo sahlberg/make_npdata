@@ -274,7 +274,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		if ((edat->flags & EDAT_COMPRESSED_FLAG) != 0)
 		{
 			metadata_sec_offset = metadata_offset + (unsigned long long) i * metadata_section_size;
-			fseeko64(in, metadata_sec_offset, SEEK_SET);
+			fseeko(in, metadata_sec_offset, SEEK_SET);
 
 			unsigned char metadata[0x20];
 			memset(metadata, 0, 0x20);
@@ -303,7 +303,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		{
 			// If FLAG 0x20, the metadata precedes each data block.
 			metadata_sec_offset = metadata_offset + (unsigned long long) i * (metadata_section_size + length);
-			fseeko64(in, metadata_sec_offset, SEEK_SET);
+			fseeko(in, metadata_sec_offset, SEEK_SET);
 
 			unsigned char metadata[0x20];
 			memset(metadata, 0, 0x20);
@@ -324,7 +324,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		else
 		{
 			metadata_sec_offset = metadata_offset + (unsigned long long) i * metadata_section_size;
-			fseeko64(in, metadata_sec_offset, SEEK_SET);
+			fseeko(in, metadata_sec_offset, SEEK_SET);
 
 			fread(hash_result, 0x10, 1, in);
 			offset = metadata_offset + (unsigned long long) i * edat->block_size + (unsigned long long) block_num * metadata_section_size;
@@ -346,7 +346,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		memset(hash, 0, 0x10);
 		memset(key_result, 0, 0x10);
 
-		fseeko64(in, offset, SEEK_SET);
+		fseeko(in, offset, SEEK_SET);
 		fread(enc_data, length, 1, in);
 
 		// Generate a key for the current block.
@@ -446,7 +446,7 @@ int decrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 
 int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, bool verbose)
 {
-	fseeko64(f, 0, SEEK_SET);
+	fseeko(f, 0, SEEK_SET);
 	unsigned char header[0xA0];
 	unsigned char empty_header[0xA0];
 	unsigned char header_hash[0x10];
@@ -491,7 +491,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	fread(header, 0xA0, 1, f);
 
 	// Read in the header and metadata section hashes.
-	fseeko64(f, 0x90, SEEK_SET);
+	fseeko(f, 0x90, SEEK_SET);
 	fread(metadata_hash, 0x10, 1, f);
 	fread(header_hash, 0x10, 1, f);
 
@@ -547,7 +547,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 	while (bytes_to_read > 0)
 	{
 		// Locate the metadata blocks.
-		fseeko64(f, metadata_section_offset, SEEK_SET);
+		fseeko(f, metadata_section_offset, SEEK_SET);
 
 		// Read in the metadata.
 		fread(metadata + bytes_read, metadata_section_size, 1, f);
@@ -594,9 +594,9 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 
 
 		// Read in the metadata and header signatures.
-		fseeko64(f, 0xB0, SEEK_SET);
+		fseeko(f, 0xB0, SEEK_SET);
 		fread(metadata_signature, 0x28, 1, f);
-		fseeko64(f, 0xD8, SEEK_SET);
+		fseeko(f, 0xD8, SEEK_SET);
 		fread(header_signature, 0x28, 1, f);
 
 		// Checking metadata signature.
@@ -612,7 +612,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 			{
 				int metadata_buf_size = block_num * 0x10;
 				unsigned char *metadata_buf = (unsigned char *) malloc(metadata_buf_size);
-				fseeko64(f, metadata_offset, SEEK_SET);
+				fseeko(f, metadata_offset, SEEK_SET);
 				fread(metadata_buf, metadata_buf_size, 1, f);
 				sha1(metadata_buf, metadata_buf_size, signature_hash);
 				free(metadata_buf);
@@ -645,7 +645,7 @@ int check_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f, 
 			// Setup header signature hash.
 			memset(signature_hash, 0, 20);
 			unsigned char *header_buf = (unsigned char *) malloc(0xD8);
-			fseeko64(f, 0x00, SEEK_SET);
+			fseeko(f, 0x00, SEEK_SET);
 			fread(header_buf, 0xD8, 1, f);
 			sha1(header_buf, 0xD8, signature_hash );
 			free(header_buf);
@@ -943,7 +943,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 		// Locate the real data.
 		int pad_length = length;
 		length = (int)((pad_length + 0xF) & 0xFFFFFFF0);
-		fseeko64(in, offset, SEEK_SET);
+		fseeko(in, offset, SEEK_SET);
 
 		// Setup buffers for encryption and read the data.
 		enc_data = (unsigned char *) malloc(length);
@@ -1036,12 +1036,12 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			// Write the encrypted metadata if DEBUG flag is not set.
 			if ((edat->flags & EDAT_DEBUG_DATA_FLAG) == 0)
 			{
-				fseeko64(out, metadata_offset + (unsigned long long) i * 0x20, SEEK_SET);
+				fseeko(out, metadata_offset + (unsigned long long) i * 0x20, SEEK_SET);
 				fwrite(enc_metadata, 0x20, 1, out);
 			}
 
 			// Write the encrypted data.
-			fseeko64(out, data_offset, SEEK_SET);
+			fseeko(out, data_offset, SEEK_SET);
 			fwrite(enc_data, length, 1, out);
 		}
 		else if ((edat->flags & EDAT_FLAG_0x20) != 0)
@@ -1071,12 +1071,12 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			// Write the encrypted metadata if DEBUG flag is not set.
 			if ((edat->flags & EDAT_DEBUG_DATA_FLAG) == 0)
 			{
-				fseeko64(out, metadata_offset + (unsigned long long) i * 0x20 + offset, SEEK_SET);
+				fseeko(out, metadata_offset + (unsigned long long) i * 0x20 + offset, SEEK_SET);
 				fwrite(metadata, 0x20, 1, out);
 			}
 
 			// Write the encrypted data.
-			fseeko64(out, data_offset, SEEK_SET);
+			fseeko(out, data_offset, SEEK_SET);
 			fwrite(enc_data, length, 1, out);
 		}
 		else
@@ -1086,12 +1086,12 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 			// Write the encrypted metadata if DEBUG flag is not set.
 			if ((edat->flags & EDAT_DEBUG_DATA_FLAG) == 0)
 			{
-				fseeko64(out, metadata_offset + (unsigned long long) i * 0x10, SEEK_SET);
+				fseeko(out, metadata_offset + (unsigned long long) i * 0x10, SEEK_SET);
 				fwrite(hash_result, 0x10, 1, out);
 			}
 
 			// Write the encrypted data.
-			fseeko64(out, data_offset, SEEK_SET);
+			fseeko(out, data_offset, SEEK_SET);
 			fwrite(enc_data, length, 1, out);
 		}
 
@@ -1101,7 +1101,7 @@ int encrypt_data(FILE *in, FILE *out, EDAT_HEADER *edat, NPD_HEADER *npd, unsign
 
 	// Before appending the footer, if the file is empty, seek to the metadata offset.
 	if (edat->file_size == 0)
-		fseeko64(out, metadata_offset, SEEK_SET);
+		fseeko(out, metadata_offset, SEEK_SET);
 
 	// Append the special version footer.
 	if ((npd->version == 0) || (npd->version == 1))
@@ -1178,7 +1178,7 @@ int forge_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f)
 	while (bytes_to_read > 0)
 	{
 		// Locate the metadata blocks.
-		fseeko64(f, metadata_section_offset, SEEK_SET);
+		fseeko(f, metadata_section_offset, SEEK_SET);
 
 		// Read in the metadata.
 		fread(metadata + bytes_read, metadata_section_size, 1, f);
@@ -1197,27 +1197,27 @@ int forge_data(unsigned char *key, EDAT_HEADER *edat, NPD_HEADER *npd, FILE *f)
 	encrypt(hash_mode, crypto_mode, (npd->version == 4), metadata, empty_metadata, metadata_size, header_key, header_iv, key, metadata_hash);
 
 	// Write back the forged metadata section hash.
-	fseeko64(f, 0x90, SEEK_SET);
+	fseeko(f, 0x90, SEEK_SET);
 	fwrite(metadata_hash, 0x10, 1, f);
 
 	// Read in the file header.
-	fseeko64(f, 0, SEEK_SET);
+	fseeko(f, 0, SEEK_SET);
 	fread(header, 0xA0, 1, f);
 
 	// Generate the header hash (located at offset 0xA0).
 	encrypt(hash_mode, crypto_mode, (npd->version == 4), header, empty_header, 0xA0, header_key, header_iv, key, header_hash);
 
 	// Write back the forged header section hash.
-	fseeko64(f, 0xA0, SEEK_SET);
+	fseeko(f, 0xA0, SEEK_SET);
 	fwrite(header_hash, 0x10, 1, f);
 
 	// ECDSA header signature (fill with random data for now).
-	fseeko64(f, 0xB0, SEEK_SET);
+	fseeko(f, 0xB0, SEEK_SET);
 	prng(header_signature, 0x28);
 	fwrite(header_signature, 0x28, 1, f);
 
 	// ECDSA metadata signature (fill with random data for now).
-	fseeko64(f, 0xD8, SEEK_SET);
+	fseeko(f, 0xD8, SEEK_SET);
 	prng(metadata_signature, 0x28);
 	fwrite(metadata_signature, 0x28, 1, f);
 
@@ -1281,9 +1281,9 @@ void forge_npd_dev_hash(unsigned char *klicensee, NPD_HEADER *npd)
 bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned char* content_id, unsigned char* devklic, unsigned char* rifkey, int version, int license, int type, int block, bool useCompression, bool isEDAT, bool isFinalized, bool verbose)
 {
 	// Get file size.
-	fseeko64(input, 0, SEEK_END);
-	long long input_file_size = ftello64(input);
-	fseeko64(input, 0, SEEK_SET);
+	fseeko(input, 0, SEEK_END);
+	long long input_file_size = ftello(input);
+	fseeko(input, 0, SEEK_SET);
 
 	// Setup NPD and EDAT/SDAT structs.
 	NPD_HEADER *NPD = (NPD_HEADER *) malloc(sizeof(NPD_HEADER));
@@ -1941,9 +1941,9 @@ int main(int argc, char **argv)
 		}
 
 		// Get the source file size.
-		fseeko64(source, 0, SEEK_END);
-		long long source_file_size = ftello64(source);
-		fseeko64(source, 0, SEEK_SET);
+		fseeko(source, 0, SEEK_END);
+		long long source_file_size = ftello(source);
+		fseeko(source, 0, SEEK_SET);
 
 		// Set up testing keys and hash.
 		unsigned char test_key[0x10];
@@ -1964,7 +1964,7 @@ int main(int argc, char **argv)
 		// Read the file's header magic and seek back.
 		unsigned char magic[0x4];
 		fread(magic, 0x4, 1, input);
-		fseeko64(input, 0, SEEK_SET);
+		fseeko(input, 0, SEEK_SET);
 
 		// If header starts with SCE, the file is a SELF or SPRX.
 		// If not, assume regular EDAT/SDAT (NPD).
@@ -1976,7 +1976,7 @@ int main(int argc, char **argv)
 			unsigned char sce_header[0x10];
 			fread(sce_header, 0x10, 1, input);
 			short npd_offset = se16(*(short*)&sce_header[0xE]) - 0x60;
-			fseeko64(input, npd_offset, SEEK_SET);
+			fseeko(input, npd_offset, SEEK_SET);
 
 			if (verbose)
 			{
@@ -2015,7 +2015,7 @@ int main(int argc, char **argv)
 		for (i = 0; i < source_file_size; i++)
 		{
 			// Iterate the source file and generate klicensee xor key.
-			fseeko64(source, i, SEEK_SET);
+			fseeko(source, i, SEEK_SET);
 
 			// If reading in text mode, convert the hexadecimal string to binary data.
 			if (mode == 1)
